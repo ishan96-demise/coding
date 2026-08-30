@@ -1,0 +1,46 @@
+FinSentinels PS-29 Release Candidate Verification
+==================================================
+
+Source package: FinSentinels_PS29_FINAL
+
+Static checks
+------------
+- Python modules compiled successfully with python -m py_compile
+- app.js syntax checked successfully with node --check
+- static/app.js syntax checked successfully with node --check
+
+Live HTTP smoke checks
+----------------------
+- /                         200 OK
+- /app.js                   200 OK
+- /static/app.js            200 OK
+- /api/health               200 OK
+- /api/network              200 OK
+- /api/analytics            200 OK
+- /api/alerts               200 OK
+- /api/cases                200 OK
+- /api/profile              200 OK
+- /api/settings             200 OK
+- /api/score/ACC_097       200 OK
+- /api/graph/ACC_097       200 OK
+- /api/transactions/recent  200 OK
+
+Backend functional checks
+-------------------------
+- 99 accounts loaded
+- 376 transfer transactions loaded
+- account/device/merchant/location node types present
+- fraud-ring analysis executes
+- create-case workflow executes
+- case detail workflow executes
+- evidence creation executes
+- OPEN -> INVESTIGATING -> CLOSED lifecycle executes
+- invalid account rejection executes
+
+Notes
+-----
+No software package can honestly be certified as having zero possible bugs.
+The release has passed the automated syntax, API, data, and case-workflow checks above.
+A full interactive browser click-through could not be completed in this environment because
+localhost browser automation was blocked/timed out; this is an environment limitation,
+not a reported application failure.
