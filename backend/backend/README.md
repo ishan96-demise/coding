@@ -72,7 +72,7 @@ The launcher creates a local virtual environment, installs requirements, runs ve
 ```powershell
 python -m pip install -r requirements.txt
 python verify.py
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn main:app --reload
 ```
 
 Open `http://127.0.0.1:8000/`.
