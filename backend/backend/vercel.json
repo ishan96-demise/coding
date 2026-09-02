@@ -1,14 +1,7 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
   "functions": {
     "api/index.py": {
-      "includeFiles": [
-        "data/**/*.json",
-        "index.html",
-        "static/**/*",
-        "app.js"
-      ]
+      "includeFiles": "data/**"
     }
   },
   "rewrites": [
