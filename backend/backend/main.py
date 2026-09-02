@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -16,13 +17,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from graph_builder import (
     analyze_account,
+    find_data_file,
     get_account_transactions,
-    get_full_graph,
     get_alert_subgraph,
+    get_full_graph,
     get_subgraph,
     load_graph_data,
     load_transactions,
-    find_data_file,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -30,19 +31,27 @@ DATA_DIR = BASE_DIR / "data"
 STATIC_DIR = BASE_DIR / "static"
 INDEX_FILE = BASE_DIR / "index.html"
 APP_JS_FILE = BASE_DIR / "app.js"
-CASE_FILE = DATA_DIR / "cases.json"
-SETTINGS_FILE = DATA_DIR / "settings.json"
+
+IS_VERCEL = os.getenv("VERCEL") == "1"
+TMP_DIR = Path(tempfile.gettempdir()) / "finsentinels_runtime"
+RUNTIME_DATA_DIR = TMP_DIR if IS_VERCEL else DATA_DIR
+
+SETTINGS_FILENAME = "settings.json"
+CASE_FILENAME = "cases.json"
 
 DEFAULT_SETTINGS = {"high_threshold": 65, "watch_threshold": 35, "graph_depth": 2}
 ALLOWED_CASE_STATUSES = {"OPEN", "INVESTIGATING", "CLOSED", "DISMISSED"}
 ALLOWED_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
 FILE_LOCK = Lock()
 
+IN_MEMORY_STORAGE: dict[str, Any] = {}
+
 app = FastAPI(
     title="FinSentinels",
     description="Explainable graph-based financial fraud network detection and investigation API",
     version="3.0.0",
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -50,6 +59,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
@@ -138,49 +148,68 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def read_json_file(path: Path, default: Any) -> Any:
+def read_json_file(filename: str, default: Any) -> Any:
+    if filename in IN_MEMORY_STORAGE:
+        return IN_MEMORY_STORAGE[filename]
+
+    tmp_path = TMP_DIR / filename
+    bundled_path = DATA_DIR / filename
+
+    # Look in TMP_DIR first so active mutations take precedence over seed data
+    for path in [tmp_path, bundled_path]:
+        if path.exists():
+            try:
+                with path.open("r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+                    IN_MEMORY_STORAGE[filename] = data
+                    return data
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    IN_MEMORY_STORAGE[filename] = default
+    return default
+
+
+def write_json_file(filename: str, data: Any) -> None:
+    IN_MEMORY_STORAGE[filename] = data
+    target = RUNTIME_DATA_DIR / filename
+
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except FileNotFoundError:
-        return default
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid JSON in {path.name}: {exc}") from exc
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp = target.with_suffix(target.suffix + ".tmp")
 
-
-def write_json_file(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    with FILE_LOCK:
-        with temp.open("w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, ensure_ascii=False)
-        os.replace(temp, path)
+        with FILE_LOCK:
+            with temp.open("w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2, ensure_ascii=False)
+            os.replace(temp, target)
+    except OSError:
+        pass
 
 
 def get_settings() -> dict[str, Any]:
-    saved = read_json_file(SETTINGS_FILE, {})
+    saved = read_json_file(SETTINGS_FILENAME, {})
     saved = saved if isinstance(saved, dict) else {}
     settings = {**DEFAULT_SETTINGS, **saved}
-    settings["high_threshold"] = int(settings["high_threshold"])
-    settings["watch_threshold"] = int(settings["watch_threshold"])
-    settings["graph_depth"] = int(settings["graph_depth"])
+    settings["high_threshold"] = int(settings.get("high_threshold", 65))
+    settings["watch_threshold"] = int(settings.get("watch_threshold", 35))
+    settings["graph_depth"] = int(settings.get("graph_depth", 2))
     if settings["watch_threshold"] >= settings["high_threshold"]:
         settings["watch_threshold"] = max(0, settings["high_threshold"] - 1)
     return settings
 
 
 def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    write_json_file(SETTINGS_FILE, settings)
+    write_json_file(SETTINGS_FILENAME, settings)
     return settings
 
 
 def load_cases() -> list[dict[str, Any]]:
-    data = read_json_file(CASE_FILE, [])
+    data = read_json_file(CASE_FILENAME, [])
     return data if isinstance(data, list) else []
 
 
 def save_cases(cases: list[dict[str, Any]]) -> None:
-    write_json_file(CASE_FILE, cases)
+    write_json_file(CASE_FILENAME, cases)
 
 
 def status_from_score(score: int | float, settings: dict[str, Any]) -> str:
@@ -204,17 +233,20 @@ def analyze_with_settings(G, account_id: str, settings: dict[str, Any] | None = 
 def next_case_id(cases: list[dict[str, Any]]) -> str:
     highest = 0
     for case in cases:
-        value = str(case.get("case_id", ""))
-        if value.startswith("CASE-"):
-            try:
-                highest = max(highest, int(value.split("-", 1)[1]))
-            except (IndexError, ValueError):
-                pass
+        if isinstance(case, dict):
+            value = str(case.get("case_id", ""))
+            if value.startswith("CASE-"):
+                try:
+                    highest = max(highest, int(value.split("-", 1)[1]))
+                except (IndexError, ValueError):
+                    pass
     return f"CASE-{highest + 1:04d}"
 
 
 def add_timeline_event(case: dict[str, Any], title: str, description: str, event_type: str = "CASE_EVENT") -> None:
-    events = case.setdefault("timeline", [])
+    if not isinstance(case.get("timeline"), list):
+        case["timeline"] = []
+    events = case["timeline"]
     events.append({
         "event_id": f"EVT-{len(events) + 1:04d}",
         "type": event_type,
@@ -341,7 +373,6 @@ def network(scope: str = "alerts"):
                 if result["status"] == "HIGH RISK":
                     alert_ids.add(aid)
 
-            # If the demo data has no HIGH RISK account, fall back to WATCH.
             if not alert_ids:
                 for aid, node_data in G.nodes(data=True):
                     if node_data.get("type") != "account":
@@ -474,10 +505,10 @@ def analytics():
             "shared_device_details": shared_device_details,
             "case_metrics": {
                 "total": len(cases),
-                "open": sum(1 for c in cases if c.get("status") in {"OPEN", "INVESTIGATING"}),
-                "investigating": sum(1 for c in cases if c.get("status") == "INVESTIGATING"),
-                "closed": sum(1 for c in cases if c.get("status") == "CLOSED"),
-                "dismissed": sum(1 for c in cases if c.get("status") == "DISMISSED"),
+                "open": sum(1 for c in cases if isinstance(c, dict) and c.get("status") in {"OPEN", "INVESTIGATING"}),
+                "investigating": sum(1 for c in cases if isinstance(c, dict) and c.get("status") == "INVESTIGATING"),
+                "closed": sum(1 for c in cases if isinstance(c, dict) and c.get("status") == "CLOSED"),
+                "dismissed": sum(1 for c in cases if isinstance(c, dict) and c.get("status") == "DISMISSED"),
             },
             "settings": settings,
         }
@@ -487,27 +518,37 @@ def analytics():
 
 @app.get("/api/cases")
 def get_cases():
-    cases = load_cases()
-    cases.sort(key=lambda item: item.get("created_at", ""), reverse=True)
-    return {"count": len(cases), "cases": cases}
+    try:
+        cases = load_cases()
+        cases.sort(key=lambda item: item.get("created_at", "") if isinstance(item, dict) else "", reverse=True)
+        return {"count": len(cases), "cases": cases}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/cases/{case_id}")
 def get_case(case_id: str):
-    cases = load_cases()
-    item = next((case for case in cases if case.get("case_id") == case_id.strip()), None)
-    if not item:
-        raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
-    G = load_graph_data()
-    aid = str(item.get("account_id", "")).strip().upper()
-    analysis = analyze_with_settings(G, aid, get_settings()) if aid in G else None
-    result = dict(item)
-    result.setdefault("evidence", [])
-    result.setdefault("timeline", [])
-    result["timeline"] = build_case_timeline(G, aid, result)
-    if analysis:
-        result["analysis"] = analysis
-    return result
+    try:
+        cases = load_cases()
+        item = next((case for case in cases if isinstance(case, dict) and case.get("case_id") == case_id.strip()), None)
+        if not item:
+            raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
+        G = load_graph_data()
+        aid = str(item.get("account_id", "")).strip().upper()
+        analysis = analyze_with_settings(G, aid, get_settings()) if aid in G else None
+        result = dict(item)
+        if not isinstance(result.get("evidence"), list):
+            result["evidence"] = []
+        if not isinstance(result.get("timeline"), list):
+            result["timeline"] = []
+        result["timeline"] = build_case_timeline(G, aid, result)
+        if analysis:
+            result["analysis"] = analysis
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/cases")
@@ -522,7 +563,10 @@ def create_case(case: CaseCreate):
         result = analyze_with_settings(G, aid, settings)
         cases = load_cases()
         existing = next(
-            (item for item in cases if item.get("account_id") == aid and item.get("status") in {"OPEN", "INVESTIGATING"}),
+            (
+                item for item in cases
+                if isinstance(item, dict) and item.get("account_id") == aid and item.get("status") in {"OPEN", "INVESTIGATING"}
+            ),
             None,
         )
         if existing:
@@ -568,54 +612,75 @@ def create_case(case: CaseCreate):
 
 @app.patch("/api/cases/{case_id}")
 def update_case(case_id: str, update: CaseUpdate):
-    cases = load_cases()
-    for item in cases:
-        if item.get("case_id") != case_id.strip():
-            continue
-        old_status = str(item.get("status", "OPEN")).upper()
-        if update.status is not None:
-            item["status"] = update.status
-        if update.note is not None:
-            item["note"] = update.note.strip()
-        if update.priority is not None:
-            item["priority"] = update.priority
-        item["updated_at"] = utc_now()
-        if item.get("status") != old_status:
-            add_timeline_event(item, f"Status changed to {item['status']}", f"Case moved from {old_status} to {item['status']}.", "STATUS_CHANGE")
-        save_cases(cases)
-        return {"success": True, "message": f"{case_id} updated.", **item}
-    raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
+    try:
+        cases = load_cases()
+        target_id = case_id.strip()
+        for item in cases:
+            if not isinstance(item, dict) or item.get("case_id") != target_id:
+                continue
+            old_status = str(item.get("status", "OPEN")).upper()
+            if update.status is not None:
+                item["status"] = update.status
+            if update.note is not None:
+                item["note"] = update.note.strip()
+            if update.priority is not None:
+                item["priority"] = update.priority
+            item["updated_at"] = utc_now()
+            if item.get("status") != old_status:
+                add_timeline_event(item, f"Status changed to {item['status']}", f"Case moved from {old_status} to {item['status']}.", "STATUS_CHANGE")
+            save_cases(cases)
+            return {"success": True, "message": f"{case_id} updated.", **item}
+        raise HTTPException(status_code=404, detail=f"Case '{target_id}' not found")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/cases/{case_id}/evidence")
 def add_evidence(case_id: str, evidence: EvidenceCreate):
-    cases = load_cases()
-    for item in cases:
-        if item.get("case_id") != case_id.strip():
-            continue
-        records = item.setdefault("evidence", [])
-        record = {
-            "evidence_id": f"EVD-{len(records) + 1:04d}",
-            "evidence_type": evidence.evidence_type,
-            "description": evidence.description,
-            "timestamp": utc_now(),
-        }
-        records.append(record)
-        add_timeline_event(item, "Evidence added", f"{evidence.evidence_type}: {evidence.description}", "EVIDENCE")
-        item["updated_at"] = utc_now()
-        save_cases(cases)
-        return {"success": True, "evidence": record, **item}
-    raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
+    try:
+        cases = load_cases()
+        target_id = case_id.strip()
+        for item in cases:
+            if not isinstance(item, dict) or item.get("case_id") != target_id:
+                continue
+
+            if not isinstance(item.get("evidence"), list):
+                item["evidence"] = []
+
+            records = item["evidence"]
+            record = {
+                "evidence_id": f"EVD-{len(records) + 1:04d}",
+                "evidence_type": evidence.evidence_type,
+                "description": evidence.description,
+                "timestamp": utc_now(),
+            }
+            records.append(record)
+
+            add_timeline_event(
+                item,
+                "Evidence added",
+                f"{evidence.evidence_type}: {evidence.description}",
+                "EVIDENCE",
+            )
+            item["updated_at"] = utc_now()
+            save_cases(cases)
+
+            return {
+                "success": True,
+                "evidence": record,
+                "case": item,
+            }
+        raise HTTPException(status_code=404, detail=f"Case '{target_id}' not found")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/ingest")
 def ingest(batch: IngestBatch):
-    """Validate a batch-shaped ingestion request without claiming live persistence.
-
-    The MVP keeps JSON files as its data source. This endpoint demonstrates the
-    streaming/batch contract and returns the validated records so a future queue
-    can persist them without redesigning the API.
-    """
     return {
         "accepted": len(batch.transactions),
         "mode": "validated_batch",
@@ -626,12 +691,15 @@ def ingest(batch: IngestBatch):
 
 @app.get("/api/profile")
 def profile():
-    cases = load_cases()
-    return {
-        "name": "R. Kulkarni", "role": "Fraud Analyst", "organization": "FinSentinels",
-        "active_cases": sum(1 for c in cases if c.get("status") in {"OPEN", "INVESTIGATING"}),
-        "total_cases": len(cases), "system": "Online",
-    }
+    try:
+        cases = load_cases()
+        return {
+            "name": "R. Kulkarni", "role": "Fraud Analyst", "organization": "FinSentinels",
+            "active_cases": sum(1 for c in cases if isinstance(c, dict) and c.get("status") in {"OPEN", "INVESTIGATING"}),
+            "total_cases": len(cases), "system": "Online",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/settings")
@@ -649,9 +717,9 @@ def update_settings(payload: SettingsUpdate):
 
 @app.on_event("startup")
 def startup():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not CASE_FILE.exists():
-        write_json_file(CASE_FILE, [])
-    if not SETTINGS_FILE.exists():
-        write_json_file(SETTINGS_FILE, DEFAULT_SETTINGS.copy())
+    try:
+        RUNTIME_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
     print("FinSentinels API online")
