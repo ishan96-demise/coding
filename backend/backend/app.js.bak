@@ -6,7 +6,6 @@
     currentView: "overview",
     networkFilter: "all",
     networkFocus: "",
-    networkMode: "alerts",
     currentAccount: "",
     currentScore: null,
     currentGraph: null,
@@ -511,7 +510,7 @@
     edgeLayer.innerHTML = "";
     nodeLayer.innerHTML = '<text x="600" y="350" text-anchor="middle" fill="#718098" font-size="13" font-family="Inter">Loading transaction network…</text>';
     try {
-      const data = await get(`/api/network?scope=${encodeURIComponent(state.networkMode === "full" ? "full" : "alerts")}`);
+      const data = await get("/api/network");
       state.networkGraph = data.graph || data;
       state.currentGraph = state.networkGraph;
       await refreshAlertsForNetwork();
@@ -533,549 +532,319 @@
     }
   }
 
-  function installNetworkViewport(svg) {
-    if (!svg || svg.__finViewportInstalled) return;
-    svg.__finViewportInstalled = true;
-    const base = { x: 0, y: 0, w: 1200, h: 700 };
-    state.networkView = state.networkView || { ...base, initialized: false };
-    if (!state.networkView.initialized) Object.assign(state.networkView, base, { initialized: true });
-
-    const apply = () => svg.setAttribute("viewBox", `${state.networkView.x} ${state.networkView.y} ${state.networkView.w} ${state.networkView.h}`);
-    const point = (event) => {
-      const rect = svg.getBoundingClientRect();
-      const nx = (event.clientX - rect.left) / Math.max(rect.width, 1);
-      const ny = (event.clientY - rect.top) / Math.max(rect.height, 1);
-      return {
-        x: state.networkView.x + nx * state.networkView.w,
-        y: state.networkView.y + ny * state.networkView.h,
-      };
-    };
-
-    svg.addEventListener("wheel", (event) => {
-      event.preventDefault();
-      const before = point(event);
-      const factor = event.deltaY > 0 ? 1.12 : 0.89;
-      const nextW = Math.max(250, Math.min(1400, state.networkView.w * factor));
-      const nextH = Math.max(190, Math.min(1050, state.networkView.h * factor));
-      const sx = nextW / state.networkView.w;
-      const sy = nextH / state.networkView.h;
-      state.networkView.x = before.x - (before.x - state.networkView.x) * sx;
-      state.networkView.y = before.y - (before.y - state.networkView.y) * sy;
-      state.networkView.w = nextW;
-      state.networkView.h = nextH;
-      apply();
-    }, { passive: false });
-
-    let pan = null;
-    svg.addEventListener("pointerdown", (event) => {
-      if (event.target.closest?.(".net-node")) return;
-      pan = { x: event.clientX, y: event.clientY, viewX: state.networkView.x, viewY: state.networkView.y, pointerId: event.pointerId };
-      svg.setPointerCapture?.(event.pointerId);
-      svg.style.cursor = "grabbing";
-    });
-    svg.addEventListener("pointermove", (event) => {
-      if (!pan) return;
-      const rect = svg.getBoundingClientRect();
-      const sx = state.networkView.w / Math.max(rect.width, 1);
-      const sy = state.networkView.h / Math.max(rect.height, 1);
-      state.networkView.x = pan.viewX - (event.clientX - pan.x) * sx;
-      state.networkView.y = pan.viewY - (event.clientY - pan.y) * sy;
-      apply();
-    });
-    const stopPan = () => { if (pan) { pan = null; svg.style.cursor = "grab"; } };
-    svg.addEventListener("pointerup", stopPan);
-    svg.addEventListener("pointercancel", stopPan);
-    svg.addEventListener("pointerleave", (event) => { if (pan && event.buttons === 0) stopPan(); });
-    svg.addEventListener("dblclick", (event) => {
-      if (event.target.closest?.(".net-node")) return;
-      Object.assign(state.networkView, base, { initialized: true });
-      apply();
-    });
-    svg.style.cursor = "grab";
-    apply();
-  }
-
-  function networkNodeRadius(node, risk, focus) {
-    const type = String(node.type || "account").toLowerCase();
-    if (type === "device") return 11;
-    if (type === "merchant" || type === "location") return 14;
-    if (focus) return 25;
-    if (risk === "HIGH RISK") return 17;
-    if (risk === "WATCH") return 15;
-    return 13;
-  }
-
-  function hashString(value) {
-    let h = 2166136261;
-    for (let i = 0; i < value.length; i++) {
-      h ^= value.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
-  }
-
-  function normalizeNode(raw) {
-    const node = raw || {};
-    const rawType = String(node.type || node.node_type || node.entity_type || "account").toLowerCase();
-    const type = ["account", "device", "merchant", "location"].includes(rawType) ? rawType : "account";
-    const riskScore = Number(node.risk_score ?? node.score ?? 0);
-    const tier = String(node.tier || node.risk_tier || (riskScore > 70 ? "high" : "" )).toLowerCase();
-    return { ...node, id: String(node.id ?? node.node_id ?? node.name ?? "").trim(), label: String(node.label ?? node.name ?? node.id ?? "").trim(), type, risk_score: Number.isFinite(riskScore) ? riskScore : 0, tier };
-  }
-
-  function normalizeEdge(raw) {
-    const edge = raw || {};
-    return {
-      ...edge,
-      source: String(edge.source ?? edge.from ?? edge.source_account ?? "").trim(),
-      target: String(edge.target ?? edge.to ?? edge.target_account ?? "").trim(),
-      relation: String(edge.relation ?? edge.edge_type ?? edge.type ?? "LINK").toUpperCase(),
-      amount: Number(edge.amount ?? edge.total_amount ?? edge.value ?? 0) || 0,
-      total_amount: Number(edge.total_amount ?? edge.amount ?? edge.value ?? 0) || 0,
-      transaction_count: Math.max(1, Number(edge.transaction_count ?? edge.count ?? 1) || 1),
-      weight: Math.max(1, Number(edge.weight ?? edge.transaction_count ?? edge.count ?? 1) || 1),
-      transaction_ids: Array.isArray(edge.transaction_ids) ? edge.transaction_ids.slice() : (edge.transaction_id ? [edge.transaction_id] : []),
-    };
-  }
-
-  function dedupeGraphEdges(edges) {
-    const result = new Map();
-    for (const edge of edges) {
-      if (!edge.source || !edge.target || edge.source === edge.target) continue;
-      if (edge.relation !== "TRANSFER") {
-        const key = `${edge.source}|${edge.target}|${edge.relation}`;
-        if (!result.has(key)) result.set(key, { ...edge });
-        continue;
-      }
-      const key = `${edge.source}|${edge.target}|TRANSFER`;
-      const existing = result.get(key);
-      if (!existing) {
-        result.set(key, { ...edge, transaction_ids: [...edge.transaction_ids] });
-        continue;
-      }
-      existing.transaction_count += edge.transaction_count;
-      existing.total_amount += edge.total_amount;
-      existing.amount = existing.total_amount;
-      existing.weight = Math.min(8, Math.max(1, existing.transaction_count));
-      existing.transaction_ids.push(...edge.transaction_ids);
-      if (!existing.timestamp || (edge.timestamp && String(edge.timestamp) > String(existing.timestamp))) {
-        existing.timestamp = edge.timestamp;
-        existing.transaction_id = edge.transaction_id || existing.transaction_id;
-      }
-    }
-    return [...result.values()];
-  }
-
   function drawNetwork(graph) {
     const edgeLayer = $("netEdges");
     const nodeLayer = $("netNodes");
-    const collateralRoot = $("collateralList");
-    const collateralCount = $("collateralCount");
-    const svg = $("networkSvg");
-    if (!edgeLayer || !nodeLayer || !svg) return;
-    installNetworkViewport(svg);
+    if (!edgeLayer || !nodeLayer) return;
 
-    // Preserve user positions between refreshes; only new nodes receive a fresh layout.
-    const previous = state.networkLayout?.positions || {};
     edgeLayer.innerHTML = "";
     nodeLayer.innerHTML = "";
-    if (collateralRoot) collateralRoot.innerHTML = "";
-    if (collateralCount) collateralCount.textContent = "0";
 
     if (!graph || !Array.isArray(graph.nodes) || !graph.nodes.length) {
-      nodeLayer.innerHTML = '<text x="600" y="350" text-anchor="middle" fill="#718098" font-size="13" font-family="Inter">No network data available</text>';
+      nodeLayer.innerHTML = '<text x="600" y="340" text-anchor="middle" fill="#718098" font-size="13" font-family="Inter">No network data available</text>';
       return;
     }
 
-    const allNodes = (Array.isArray(graph.nodes) ? graph.nodes : (Array.isArray(graph.data?.nodes) ? graph.data.nodes : [])).map(normalizeNode);
-    const rawEdges = Array.isArray(graph.edges) ? graph.edges : (Array.isArray(graph.links) ? graph.links : (Array.isArray(graph.data?.edges) ? graph.data.edges : (Array.isArray(graph.data?.links) ? graph.data.links : [])));
-    const allEdges = dedupeGraphEdges(rawEdges.map(normalizeEdge));
-    const nodeMap = new Map(allNodes.map((n) => [n.id, n]));
-    const riskMap = new Map((state.alerts || []).map((a) => [String(a.account_id || "").toUpperCase(), a]));
-    const isHighRiskNode = (node) => {
-      const alert = riskMap.get(String(node.id).toUpperCase());
-      const score = Number(alert?.risk_score ?? node.risk_score ?? 0);
-      const tier = String(alert?.tier ?? node.tier ?? "").toLowerCase();
-      const status = String(alert?.status ?? "").toUpperCase();
-      return score > 70 || tier === "high" || status === "HIGH RISK";
-    };
-    const riskAccounts = new Set(allNodes.filter((n) => isHighRiskNode(n)).map((n) => n.id));
-    const ringAccounts = new Set((state.alerts || []).filter((a) => Number(a.cycle_count || 0) > 0).map((a) => a.account_id));
-    const muleAccounts = new Set((state.alerts || []).filter((a) => Boolean(a.mule_account)).map((a) => a.account_id));
+    const nodes = graph.nodes.slice();
+    const edges = Array.isArray(graph.edges) ? graph.edges.slice() : [];
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const riskMap = new Map((state.alerts || []).map((alert) => [alert.account_id, alert]));
+    const riskAccounts = new Set(
+      (state.alerts || [])
+        .filter((alert) => ["HIGH RISK", "WATCH"].includes(String(alert.status || "").toUpperCase()))
+        .map((alert) => alert.account_id)
+    );
+    const ringAccounts = new Set(
+      (state.alerts || [])
+        .filter((alert) => Number(alert.cycle_count || 0) > 0)
+        .map((alert) => alert.account_id)
+    );
+    const muleAccounts = new Set(
+      (state.alerts || [])
+        .filter((alert) => Boolean(alert.mule_account))
+        .map((alert) => alert.account_id)
+    );
+
     const focusId = String(state.networkFocus || state.currentAccount || "").trim().toUpperCase();
 
-    const adjacency = new Map(allNodes.map((node) => [node.id, new Set()]));
-    for (const edge of allEdges) {
+    // Build undirected adjacency for visual neighbourhood extraction.
+    const adjacency = new Map(nodes.map((node) => [node.id, new Set()]));
+    for (const edge of edges) {
       if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) continue;
       adjacency.get(edge.source).add(edge.target);
       adjacency.get(edge.target).add(edge.source);
     }
-    function bfsDistances(start, cutoff = 2) {
-      const distances = new Map([[start, 0]]);
-      const queue = [start];
-      while (queue.length) {
-        const current = queue.shift();
-        const distance = distances.get(current) || 0;
-        if (distance >= cutoff) continue;
-        for (const next of adjacency.get(current) || []) if (!distances.has(next)) { distances.set(next, distance + 1); queue.push(next); }
-      }
-      return distances;
-    }
 
     let visibleNodes;
     let focused = false;
-    let distances = null;
+
     if (focusId && nodeMap.has(focusId)) {
       focused = true;
-      distances = bfsDistances(focusId, 2);
-      visibleNodes = allNodes.filter((node) => distances.has(node.id));
-      visibleNodes.sort((a, b) => {
-        const da = distances.get(a.id) ?? 99, db = distances.get(b.id) ?? 99;
-        const typePriority = (node) => {
-          if (node.id === focusId) return 0;
-          if (riskAccounts.has(node.id) || ringAccounts.has(node.id) || muleAccounts.has(node.id)) return 1;
-          // Keep semantic relationship nodes visible during focused rendering.
-          if (node.type === "location") return 2;
-          if (node.type === "merchant") return 3;
-          if (node.type === "account") return 4;
-          return 5;
-        };
-        return da - db || typePriority(a) - typePriority(b) || String(a.id).localeCompare(String(b.id));
-      });
-
-      // Never truncate locations/merchants out of a focused graph. If the
-      // account neighborhood is large, trim ordinary account/device nodes first.
-      const semanticNodes = visibleNodes.filter((node) => ["location", "merchant"].includes(node.type));
-      const priorityNodes = visibleNodes.filter((node) => !["location", "merchant"].includes(node.type));
-      visibleNodes = priorityNodes.slice(0, Math.max(0, 76 - semanticNodes.length)).concat(semanticNodes);
-    } else if (state.networkMode === "full") {
-      visibleNodes = allNodes.slice();
+      const distances = new Map([[focusId, 0]]);
+      const queue = [focusId];
+      while (queue.length) {
+        const current = queue.shift();
+        const distance = distances.get(current) || 0;
+        if (distance >= 2) continue;
+        for (const next of adjacency.get(current) || []) {
+          if (!distances.has(next)) {
+            distances.set(next, distance + 1);
+            queue.push(next);
+          }
+        }
+      }
+      visibleNodes = nodes
+        .filter((node) => distances.has(node.id))
+        .sort((a, b) => (distances.get(a.id) - distances.get(b.id)) || ((riskMap.has(a.id) ? 0 : 1) - (riskMap.has(b.id) ? 0 : 1)))
+        .slice(0, 95);
     } else {
-      // Compact default: HIGH RISK alert accounts + direct 1-hop neighbors.
-      // Falls back to WATCH alerts when no HIGH RISK accounts are present.
-      const seeds = allNodes.filter((n) => n.type === "account" && riskMap.get(n.id)?.status === "HIGH RISK");
-      const fallbackSeeds = seeds.length
-        ? seeds
-        : allNodes.filter((n) => n.type === "account" && riskMap.get(n.id)?.status === "WATCH");
-      const keep = new Set(fallbackSeeds.map((n) => n.id));
-      for (const seed of fallbackSeeds) {
-        for (const neighbor of adjacency.get(seed.id) || []) keep.add(neighbor);
+      // The full graph contains many normal entities. For readability, the default
+      // view keeps the suspicious core plus a controlled sample of normal accounts.
+      const priority = nodes.filter((node) =>
+        node.type !== "account"
+          ? false
+          : riskAccounts.has(node.id) || ringAccounts.has(node.id) || muleAccounts.has(node.id)
+      );
+
+      const priorityIds = new Set(priority.map((node) => node.id));
+      const connectedAttributeIds = new Set();
+      for (const edge of edges) {
+        if (!priorityIds.has(edge.source) && !priorityIds.has(edge.target)) continue;
+        const other = priorityIds.has(edge.source) ? edge.target : edge.source;
+        const otherNode = nodeMap.get(other);
+        if (otherNode && otherNode.type !== "account") connectedAttributeIds.add(other);
       }
-      // Semantic nodes are part of the relationship evidence and must never be
-      // dropped just because the renderer is in its compact alert mode.
-      for (const node of allNodes) {
-        if (node.type !== "location" && node.type !== "merchant") continue;
-        const linkedToSeed = fallbackSeeds.some((seed) => (adjacency.get(seed.id) || new Set()).has(node.id));
-        if (linkedToSeed) keep.add(node.id);
-      }
-      visibleNodes = allNodes.filter((n) => keep.has(n.id));
+
+      const attributes = nodes.filter((node) => connectedAttributeIds.has(node.id));
+      const normalAccounts = nodes.filter((node) => node.type === "account" && !priorityIds.has(node.id));
+      const normalSample = normalAccounts.filter((_, index) => index % Math.max(1, Math.ceil(normalAccounts.length / 30)) === 0).slice(0, 30);
+      visibleNodes = [...priority, ...attributes, ...normalSample].slice(0, 72);
     }
 
-    if (state.networkFilter === "high") visibleNodes = visibleNodes.filter((node) => node.type !== "account" || riskMap.get(node.id)?.status === "HIGH RISK");
-    if (state.networkFilter === "ring") {
-      const keep = new Set(); for (const id of ringAccounts) { keep.add(id); for (const n of adjacency.get(id) || []) keep.add(n); }
+    // Apply explicit network filter after focus/default selection.
+    if (state.networkFilter === "high") {
+      visibleNodes = visibleNodes.filter((node) => node.type !== "account" || riskMap.get(node.id)?.status === "HIGH RISK");
+    } else if (state.networkFilter === "ring") {
+      const keep = new Set();
+      for (const id of ringAccounts) {
+        keep.add(id);
+        for (const neighbour of adjacency.get(id) || []) keep.add(neighbour);
+      }
       visibleNodes = visibleNodes.filter((node) => keep.has(node.id));
-    }
-    if (state.networkFilter === "mule") {
-      const keep = new Set(muleAccounts); for (const id of muleAccounts) for (const n of adjacency.get(id) || []) keep.add(n);
+    } else if (state.networkFilter === "mule") {
+      const keep = new Set(muleAccounts);
+      for (const id of muleAccounts) {
+        for (const neighbour of adjacency.get(id) || []) keep.add(neighbour);
+      }
       visibleNodes = visibleNodes.filter((node) => keep.has(node.id));
     }
 
     if (!visibleNodes.length) {
-      nodeLayer.innerHTML = '<text x="600" y="350" text-anchor="middle" fill="#718098" font-size="13" font-family="Inter">No nodes match this filter</text>';
-      if (collateralRoot) collateralRoot.innerHTML = '<div class="collateral-empty">No device collateral for this filter.</div>';
+      nodeLayer.innerHTML = '<text x="600" y="340" text-anchor="middle" fill="#718098" font-size="13" font-family="Inter">No nodes match this filter</text>';
       return;
     }
 
-    const visibleIds = new Set(visibleNodes.map((n) => n.id));
+    const visibleIds = new Set(visibleNodes.map((node) => node.id));
+    let visibleEdges = edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
 
-    // Risk-aware edge filtering: the default view suppresses routine
-    // background traffic. The existing "Full Network" toggle restores all
-    // edges for inspection. High-risk status OR risk score > 70 keeps an edge
-    // visible; relationship edges attached to those nodes remain as evidence.
-    const riskScore = (nodeId) => {
-      const alert = riskMap.get(nodeId);
-      if (alert && Number.isFinite(Number(alert.risk_score))) return Number(alert.risk_score);
-      if (nodeId === state.currentScore?.account_id) return Number(state.currentScore?.risk_score || 0);
-      const node = nodeMap.get(nodeId);
-      return Number(node?.risk_score || 0);
+    // Keep the visual graph readable even when a 2-hop neighbourhood contains
+    // hundreds of repeated normal transfers. Preserve suspicious/focus edges first.
+    const edgePriority = (edge) => {
+      const hot = edge.relation === "TRANSFER" && (
+        edge.source === focusId ||
+        edge.target === focusId ||
+        riskMap.get(edge.source)?.status === "HIGH RISK" ||
+        riskMap.get(edge.target)?.status === "HIGH RISK"
+      );
+      if (hot) return 0;
+      if (edge.relation === "TRANSFER") return 1;
+      return 2;
     };
-    const highRiskIds = new Set(visibleNodes.filter(isHighRiskNode).map((node) => node.id));
+    visibleEdges.sort((a, b) => edgePriority(a) - edgePriority(b));
+    const edgeCap = focused ? 300 : 240;
+    visibleEdges = visibleEdges.slice(0, edgeCap);
 
-    let visibleEdges = allEdges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
-    if (state.networkMode !== 'full') {
-      visibleEdges = visibleEdges.filter((edge) => highRiskIds.has(edge.source) || highRiskIds.has(edge.target));
-    }
-
-    // Collapse repeated directed transfers between the same two nodes into a
-    // single visual edge. The backend already performs this compaction for
-    // serialized data, but keeping a frontend guard makes live updates safe.
-    const collapsed = new Map();
-    const passthrough = [];
-    for (const edge of visibleEdges) {
-      if (String(edge.relation || '').toUpperCase() !== 'TRANSFER') {
-        passthrough.push(edge);
-        continue;
-      }
-      const key = `${edge.source}|${edge.target}|TRANSFER`;
-      const existing = collapsed.get(key);
-      const amount = Number(edge.amount || 0);
-      const count = Number(edge.transaction_count || 1);
-      if (!existing) {
-        collapsed.set(key, {
-          ...edge,
-          transaction_count: count,
-          transaction_ids: Array.isArray(edge.transaction_ids) ? [...edge.transaction_ids] : (edge.transaction_id ? [edge.transaction_id] : []),
-          total_amount: Number(edge.total_amount ?? amount),
-          max_amount: Number(edge.max_amount ?? amount),
-          weight: Number(edge.weight ?? Math.max(1, Math.min(6, count))),
-        });
-      } else {
-        existing.transaction_count += count;
-        existing.total_amount = Number(existing.total_amount || 0) + Number(edge.total_amount ?? amount);
-        existing.max_amount = Math.max(Number(existing.max_amount || 0), Number(edge.max_amount ?? amount));
-        existing.weight = Math.max(1, Math.min(6, existing.transaction_count));
-        if (Array.isArray(edge.transaction_ids)) existing.transaction_ids.push(...edge.transaction_ids);
-        else if (edge.transaction_id) existing.transaction_ids.push(edge.transaction_id);
-        if (!existing.timestamp || (edge.timestamp && String(edge.timestamp) > String(existing.timestamp))) {
-          existing.timestamp = edge.timestamp;
-          existing.transaction_id = edge.transaction_id || existing.transaction_id;
-        }
-      }
-    }
-    visibleEdges = [...collapsed.values(), ...passthrough];
-
-    const deviceDegree = new Map();
-    for (const edge of allEdges) {
-      const s = nodeMap.get(edge.source), t = nodeMap.get(edge.target);
-      if (s?.type === "account" && t?.type === "device") deviceDegree.set(edge.target, (deviceDegree.get(edge.target) || 0) + 1);
-    }
-    const graphDevices = new Set();
-    const collateralDevices = [];
-    for (const node of allNodes.filter((n) => n.type === "device")) {
-      const degree = deviceDegree.get(node.id) || 0;
-      const important = degree > 1 && (!focused || node.id === focusId || visibleEdges.some((e) => e.target === node.id && (e.source === focusId || riskAccounts.has(e.source) || ringAccounts.has(e.source))));
-      if (important && visibleIds.has(node.id)) graphDevices.add(node.id);
-      else if (degree > 0 && (!focused || visibleIds.has(node.id))) collateralDevices.push({ node, degree });
-    }
-
-    const mainNodes = visibleNodes.filter((node) => node.type !== "device" || graphDevices.has(node.id));
-    const mainIds = new Set(mainNodes.map((node) => node.id));
-    visibleEdges = visibleEdges.filter((edge) => mainIds.has(edge.source) && mainIds.has(edge.target));
-    visibleEdges.sort((a, b) => {
-      const score = (e) => e.relation === "TRANSFER" && (e.source === focusId || e.target === focusId || riskAccounts.has(e.source) || riskAccounts.has(e.target) || ringAccounts.has(e.source) || ringAccounts.has(e.target)) ? 0 : e.relation === "TRANSFER" ? 1 : 2;
-      return score(a) - score(b);
-    });
-    visibleEdges = visibleEdges.slice(0, focused ? 180 : 160);
-
-    // Force-style layout: no hard bounding-box clamping.
-    const W = 1200, H = 700, cx = W / 2, cy = H / 2;
+    const W = 1200;
+    const H = 700;
+    const cx = W / 2;
+    const cy = H / 2;
     const positions = {};
-    const hotAccounts = mainNodes.filter((n) => n.type === "account" && (riskAccounts.has(n.id) || ringAccounts.has(n.id) || muleAccounts.has(n.id)));
 
-    let seedIndex = 0;
-    for (const node of mainNodes) {
-      if (previous[node.id] && Number.isFinite(previous[node.id].x) && Number.isFinite(previous[node.id].y)) {
-        positions[node.id] = { ...previous[node.id] };
-        continue;
-      }
-      const golden = 2.399963229728653;
-      const radius = 70 + Math.sqrt(seedIndex + 1) * 34;
-      const angle = seedIndex * golden;
-      const jitter = ((hashString(String(node.id)) % 31) - 15) * 1.2;
-      positions[node.id] = {
-        x: cx + Math.cos(angle) * (radius + jitter),
-        y: cy + Math.sin(angle) * (radius + jitter),
+    // Deterministic force layout. This produces a natural network shape without
+    // adding another dependency, while keeping demo rendering fast.
+    const indexOf = new Map(visibleNodes.map((node, i) => [node.id, i]));
+    const pos = visibleNodes.map((node, i) => {
+      const angle = (i / Math.max(visibleNodes.length, 1)) * Math.PI * 2;
+      const isFocus = node.id === focusId;
+      const tier = node.type === "account" ? 1 : 1.35;
+      const radius = isFocus ? 0 : 150 + (i % 7) * 34;
+      return {
+        node,
+        x: isFocus ? cx : cx + Math.cos(angle) * radius * tier,
+        y: isFocus ? cy : cy + Math.sin(angle) * radius * 0.72,
+        vx: 0,
+        vy: 0,
       };
-      seedIndex += 1;
-    }
-
-    // High-risk accounts start near the center but are free to move under physics.
-    hotAccounts.forEach((node, i) => {
-      if (previous[node.id]) return;
-      const angle = -Math.PI / 2 + (i / Math.max(hotAccounts.length, 1)) * Math.PI * 2;
-      const r = hotAccounts.length === 1 ? 0 : 58;
-      positions[node.id] = { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
     });
 
-    const work = mainNodes.map((node) => ({
-      node, x: positions[node.id]?.x ?? cx, y: positions[node.id]?.y ?? cy, vx: 0, vy: 0,
-    }));
-    const index = new Map(work.map((item, i) => [item.node.id, i]));
-    const pairs = visibleEdges.map((edge) => ({ a: index.get(edge.source), b: index.get(edge.target), edge }))
-      .filter((p) => Number.isInteger(p.a) && Number.isInteger(p.b));
+    const edgePairs = visibleEdges.map((edge) => ({
+      a: indexOf.get(edge.source),
+      b: indexOf.get(edge.target),
+      edge,
+    })).filter((item) => Number.isInteger(item.a) && Number.isInteger(item.b));
 
-    const iterations = state.networkMode === "full" ? 110 : (focused ? 95 : 85);
-    for (let iter = 0; iter < iterations; iter++) {
-      for (let i = 0; i < work.length; i++) {
-        for (let j = i + 1; j < work.length; j++) {
-          const a = work[i], b = work[j];
-          const dx = a.x - b.x, dy = a.y - b.y;
-          const d = Math.max(0.01, Math.hypot(dx, dy));
-          const ux = dx / d, uy = dy / d;
-          const ra = networkNodeRadius(a.node, riskMap.get(a.node.id)?.status, a.node.id === focusId);
-          const rb = networkNodeRadius(b.node, riskMap.get(b.node.id)?.status, b.node.id === focusId);
-          const minD = ra + rb + 56;
-
-          // Strong repulsion: roughly equivalent to a ForceAtlas2
-          // gravitationalConstant around -250 for this lightweight solver.
-          const repel = Math.min(30, 72000 / Math.max(d * d, 500));
-          a.vx += ux * repel; a.vy += uy * repel;
-          b.vx -= ux * repel; b.vy -= uy * repel;
-
-          // Collision padding keeps labels/nodes from sitting on top of each other.
-          if (d < minD) {
-            const push = (minD - d) * 0.32;
-            a.vx += ux * push; a.vy += uy * push;
-            b.vx -= ux * push; b.vy -= uy * push;
-          }
+    const simIterations = focused ? 95 : 65;
+    for (let iter = 0; iter < simIterations; iter++) {
+      const damping = 0.82;
+      // Repulsion
+      for (let i = 0; i < pos.length; i++) {
+        for (let j = i + 1; j < pos.length; j++) {
+          const a = pos[i], b = pos[j];
+          let dx = a.x - b.x;
+          let dy = a.y - b.y;
+          const dist2 = Math.max(400, dx * dx + dy * dy);
+          const force = Math.min(120, 5200 / dist2);
+          const dist = Math.sqrt(dist2);
+          dx /= dist; dy /= dist;
+          a.vx += dx * force; a.vy += dy * force;
+          b.vx -= dx * force; b.vy -= dy * force;
         }
       }
-
-      for (const pair of pairs) {
-        const a = work[pair.a], b = work[pair.b];
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const d = Math.max(1, Math.hypot(dx, dy));
-        // Minimum link distance target.
-        const target = pair.edge.relation === "TRANSFER" ? 140 : 160;
-        const spring = (d - target) * 0.012;
-        const fx = dx / d * spring, fy = dy / d * spring;
-        a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+      // Attraction along edges
+      for (const pair of edgePairs) {
+        const a = pos[pair.a], b = pos[pair.b];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const target = pair.edge.relation === "TRANSFER" ? 165 : 125;
+        const force = (dist - target) * 0.0028;
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        a.vx += fx; a.vy += fy;
+        b.vx -= fx; b.vy -= fy;
       }
-
-      for (const item of work) {
-        // Soft gravity only; there are NO x/y min/max clamps.
-        item.vx += (cx - item.x) * 0.0009;
-        item.vy += (cy - item.y) * 0.0009;
-        if (riskAccounts.has(item.node.id) || ringAccounts.has(item.node.id) || muleAccounts.has(item.node.id)) {
-          item.vx += (cx - item.x) * 0.0012;
-          item.vy += (cy - item.y) * 0.0012;
+      for (const item of pos) {
+        if (item.node.id === focusId) {
+          item.x = cx; item.y = cy; item.vx = 0; item.vy = 0;
+          continue;
         }
-        item.vx *= 0.82; item.vy *= 0.82;
-        item.x += item.vx; item.y += item.vy;
+        item.vx *= damping;
+        item.vy *= damping;
+        item.x += item.vx;
+        item.y += item.vy;
+        item.x = Math.max(70, Math.min(W - 70, item.x));
+        item.y = Math.max(85, Math.min(H - 65, item.y));
       }
     }
-    for (const item of work) positions[item.node.id] = { x: item.x, y: item.y };
 
-    // Remaining parallel relationship edges get mild curvature. Transfers are
-    // already deduplicated, so we never draw a stack of 4–5 identical arcs.
-    const pairCounts = new Map();
+    for (const item of pos) positions[item.node.id] = { x: item.x, y: item.y };
+
+    // Edges first so nodes sit above them.
     for (const edge of visibleEdges) {
-      const key = [edge.source, edge.target, edge.relation].join("|");
-      const idx = pairCounts.get(key) || 0; pairCounts.set(key, idx + 1);
-      edge._parallelIndex = idx; edge._parallelCount = idx + 1;
+      const a = positions[edge.source];
+      const b = positions[edge.target];
+      if (!a || !b) continue;
+
+      const hot = edge.relation === "TRANSFER" && (
+        riskMap.get(edge.source)?.status === "HIGH RISK" ||
+        riskMap.get(edge.target)?.status === "HIGH RISK" ||
+        edge.source === focusId || edge.target === focusId
+      );
+
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", a.x);
+      line.setAttribute("y1", a.y);
+      line.setAttribute("x2", b.x);
+      line.setAttribute("y2", b.y);
+      line.setAttribute("stroke", hot ? "#FF5C5C" : edge.relation === "USED_DEVICE" ? "#A57A2B" : edge.relation === "MERCHANT" ? "#9B7BEB" : edge.relation === "LOCATION" ? "#69AEE8" : "#344254");
+      line.setAttribute("stroke-width", hot ? "2.4" : edge.relation === "TRANSFER" ? "1.15" : "0.9");
+      line.setAttribute("stroke-dasharray", edge.relation === "TRANSFER" ? "" : "5 5");
+      line.setAttribute("marker-end", `url(#${hot ? "arrowRed" : "arrow"})`);
+      line.setAttribute("opacity", hot ? "0.95" : "0.7");
+      edgeLayer.appendChild(line);
+
+      if (edge.relation === "TRANSFER" && edge.amount != null && (hot || focused)) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", (a.x + b.x) / 2);
+        label.setAttribute("y", (a.y + b.y) / 2 - 6);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("fill", hot ? "#FF9C9C" : "#7C8AA0");
+        label.setAttribute("font-size", "9");
+        label.setAttribute("font-family", "JetBrains Mono, monospace");
+        label.textContent = money(edge.amount);
+        edgeLayer.appendChild(label);
+      }
     }
-    const makePath = (a, b, bend) => {
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      const dx = b.x - a.x, dy = b.y - a.y, len = Math.max(1, Math.hypot(dx, dy));
-      const nx = -dy / len, ny = dx / len;
-      const curve = bend * Math.min(70, 18 + len * 0.06);
-      const qx = mx + nx * curve, qy = my + ny * curve;
-      return { d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${qx.toFixed(1)} ${qy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`, lx: qx, ly: qy };
-    };
 
-    const edgeRefs = [];
-    for (const edge of visibleEdges) {
-      const a = positions[edge.source], b = positions[edge.target]; if (!a || !b) continue;
-      const relation = String(edge.relation || "").toUpperCase();
-      const hot = relation === "TRANSFER" && (edge.source === focusId || edge.target === focusId || riskAccounts.has(edge.source) || riskAccounts.has(edge.target) || ringAccounts.has(edge.source) || ringAccounts.has(edge.target));
-      const offset = edge._parallelCount > 1 ? (edge._parallelIndex % 2 === 0 ? 1 : -1) * Math.ceil((edge._parallelCount + 1) / 2) : 0.45;
-      const pathData = makePath(a, b, offset);
+    for (const node of visibleNodes) {
+      const p = positions[node.id];
+      if (!p) continue;
+
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      group.classList.add("net-edge"); group.dataset.edgeId = String(edge.id || `${edge.source}-${edge.target}`); if (hot) group.classList.add("edge-hot");
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", pathData.d); path.setAttribute("fill", "none");
-      const stroke = hot ? "#FF5C5C" : relation === "USED_DEVICE" ? "#A57A2B" : relation.includes("MERCHANT") ? "#9B7BEB" : relation.includes("LOCATION") || relation === "OCCURRED_AT" ? "#69AEE8" : "#344254";
-      path.setAttribute("stroke", stroke); path.setAttribute("stroke-width", hot ? String(Math.min(4.5, 1.8 + Number(edge.weight || 1) * 0.45)) : relation === "TRANSFER" ? "1.1" : "0.9"); path.setAttribute("stroke-dasharray", relation === "TRANSFER" ? "" : "5 5"); path.setAttribute("marker-end", `url(#${hot ? "arrowRed" : "arrow"})`); path.setAttribute("opacity", hot ? "0.98" : "0.66"); group.appendChild(path);
-      const hit = document.createElementNS("http://www.w3.org/2000/svg", "path"); hit.setAttribute("d", pathData.d); hit.setAttribute("fill", "none"); hit.setAttribute("stroke", "transparent"); hit.setAttribute("stroke-width", "16"); hit.style.cursor = "pointer"; group.appendChild(hit);
-      if (relation === "TRANSFER" && edge.amount != null) {
-        const lg = document.createElementNS("http://www.w3.org/2000/svg", "g"); lg.classList.add("net-edge-label");
-        const text = document.createElementNS("http://www.w3.org/2000/svg", "text"); text.setAttribute("x", pathData.lx); text.setAttribute("y", pathData.ly - 2); text.setAttribute("text-anchor", "middle"); text.setAttribute("fill", hot ? "#FFD0D0" : "#A9B3C2"); text.setAttribute("font-size", hot ? "9" : "8.2"); text.setAttribute("font-family", "JetBrains Mono, monospace");
-        const labelAmount = Number(edge.total_amount ?? edge.amount ?? 0);
-        text.textContent = edge.transaction_count > 1 ? `${money(labelAmount)} · ${edge.transaction_count} tx` : money(labelAmount);
-        const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect"); const labelText = edge.transaction_count > 1 ? `${money(labelAmount)} · ${edge.transaction_count} tx` : money(labelAmount); const width = Math.max(44, labelText.length * 6 + 10); bg.setAttribute("x", pathData.lx - width/2); bg.setAttribute("y", pathData.ly - 12); bg.setAttribute("width", width); bg.setAttribute("height", 14); bg.setAttribute("rx", 4); bg.classList.add("net-edge-label-bg"); lg.appendChild(bg); lg.appendChild(text); group.appendChild(lg);
-        hit.addEventListener("mouseenter", () => group.classList.add("edge-show-label")); hit.addEventListener("mouseleave", () => { if (!group.classList.contains("edge-pinned")) group.classList.remove("edge-show-label"); }); hit.addEventListener("click", (event) => { event.stopPropagation(); group.classList.toggle("edge-pinned"); });
-      }
-      edgeLayer.appendChild(group); edgeRefs.push({ edge, path, hit, labelGroup: group.querySelector(".net-edge-label"), curve: offset });
-    }
+      group.classList.add("net-node");
+      group.setAttribute("tabindex", "0");
 
-    const nodeRefs = [];
-    for (const node of mainNodes) {
-      const p = positions[node.id]; if (!p) continue;
       const type = String(node.type || "account").toLowerCase();
-      const alert = riskMap.get(node.id); const isFocus = node.id === focusId;
-      const risk = isHighRiskNode(node) ? "HIGH RISK" : String(alert?.status || (node.id === state.currentScore?.account_id ? state.currentScore?.status : "SAFE")).toUpperCase();
-      const group = document.createElementNS("http://www.w3.org/2000/svg", "g"); group.classList.add("net-node"); if (isFocus) group.classList.add("node-focus"); group.setAttribute("tabindex", "0"); group.dataset.nodeId = node.id;
+      const accountAlert = riskMap.get(node.id);
+      const isFocus = node.id === focusId;
+      const risk = String(accountAlert?.status || (node.id === state.currentScore?.account_id ? state.currentScore?.status : "SAFE")).toUpperCase();
+      group.classList.add(`node-${riskTier(risk)}`);
+      if (isFocus) group.classList.add("node-focus");
       const fill = type === "device" ? "#F0A93A" : type === "merchant" ? "#9B7BEB" : type === "location" ? "#69AEE8" : risk === "HIGH RISK" ? "#FF5C5C" : risk === "WATCH" ? "#F0A93A" : "#4F7CFF";
-      const stroke = isFocus ? "#FFFFFF" : risk === "HIGH RISK" ? "#FFB1B1" : "#263955";
-      if (isFocus && type === "account") { const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle"); halo.setAttribute("cx", p.x); halo.setAttribute("cy", p.y); halo.setAttribute("r", "38"); halo.setAttribute("fill", "none"); halo.setAttribute("stroke", risk === "HIGH RISK" ? "#FF5C5C" : "#F0A93A"); halo.setAttribute("stroke-width", "1.5"); halo.setAttribute("stroke-dasharray", "4 6"); halo.setAttribute("opacity", ".9"); group.appendChild(halo); }
+      const stroke = isFocus ? "#FFFFFF" : risk === "HIGH RISK" ? "#FF9B9B" : "#263955";
+
+      if (isFocus && type === "account") {
+        const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        halo.setAttribute("cx", p.x); halo.setAttribute("cy", p.y); halo.setAttribute("r", "34");
+        halo.setAttribute("fill", "none"); halo.setAttribute("stroke", "#FF5C5C"); halo.setAttribute("stroke-width", "1.3"); halo.setAttribute("stroke-dasharray", "4 5"); halo.setAttribute("opacity", "0.75");
+        group.appendChild(halo);
+      }
+
       let shape;
-      if (type === "device") { shape = document.createElementNS("http://www.w3.org/2000/svg", "rect"); shape.setAttribute("x", p.x-11); shape.setAttribute("y", p.y-11); shape.setAttribute("width", "22"); shape.setAttribute("height", "22"); shape.setAttribute("rx", "4"); }
-      else if (type === "merchant") { shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon"); shape.setAttribute("points", `${p.x},${p.y-13} ${p.x+13},${p.y} ${p.x},${p.y+13} ${p.x-13},${p.y}`); }
-      else if (type === "location") { shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon"); shape.setAttribute("points", `${p.x},${p.y-14} ${p.x+12},${p.y+10} ${p.x-12},${p.y+10}`); }
-      else { shape = document.createElementNS("http://www.w3.org/2000/svg", "circle"); shape.setAttribute("cx", p.x); shape.setAttribute("cy", p.y); shape.setAttribute("r", String(networkNodeRadius(node, risk, isFocus))); }
-      shape.setAttribute("fill", fill); shape.setAttribute("stroke", stroke); shape.setAttribute("stroke-width", isFocus ? "2.7" : "1.5"); group.appendChild(shape);
-      const important = isFocus || type !== "account" || risk !== "SAFE" || mainNodes.length <= 34;
-      let label = null, labelBg = null;
+      if (type === "device") {
+        shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        shape.setAttribute("x", p.x - 10); shape.setAttribute("y", p.y - 10); shape.setAttribute("width", "20"); shape.setAttribute("height", "20"); shape.setAttribute("rx", "4");
+      } else if (type === "merchant") {
+        shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        shape.setAttribute("points", `${p.x},${p.y-12} ${p.x+12},${p.y} ${p.x},${p.y+12} ${p.x-12},${p.y}`);
+      } else if (type === "location") {
+        shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        shape.setAttribute("points", `${p.x},${p.y-13} ${p.x+11},${p.y+10} ${p.x-11},${p.y+10}`);
+      } else {
+        shape = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        shape.setAttribute("cx", p.x); shape.setAttribute("cy", p.y); shape.setAttribute("r", isFocus ? "23" : risk === "HIGH RISK" ? "15" : "12");
+      }
+      shape.setAttribute("fill", fill);
+      shape.setAttribute("stroke", stroke);
+      shape.setAttribute("stroke-width", isFocus ? "2.5" : "1.5");
+      group.appendChild(shape);
+
+      const important = isFocus || type !== "account" || risk !== "SAFE" || visibleNodes.length <= 28;
       if (important) {
-        label = document.createElementNS("http://www.w3.org/2000/svg", "text"); label.setAttribute("x", p.x); label.setAttribute("y", p.y - (isFocus ? 34 : 21)); label.setAttribute("text-anchor", "middle"); label.setAttribute("fill", isFocus ? "#F4F7FB" : "#A7B0C3"); label.setAttribute("font-size", isFocus ? "11.8" : "8.3"); label.setAttribute("font-family", "JetBrains Mono, monospace"); label.textContent = node.label || node.id; group.appendChild(label);
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", p.x);
+        label.setAttribute("y", p.y - (isFocus ? 31 : 18));
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("fill", isFocus ? "#F4F7FB" : "#A7B0C3");
+        label.setAttribute("font-size", isFocus ? "11" : "8.5");
+        label.setAttribute("font-family", "JetBrains Mono, monospace");
+        label.textContent = node.label || node.id;
+        group.appendChild(label);
       }
-      const connectedEdgeGroups = () => qsa(".net-edge").filter((eg) => visibleEdges.some((e) => String(e.id || `${e.source}-${e.target}`) === eg.dataset.edgeId && (e.source === node.id || e.target === node.id)));
-      const openNode = () => type === "account" ? inspectAccountNode(node.id) : showEntityInfo(node.id, type);
-      group.addEventListener("click", (event) => { if (!group.__dragged) openNode(); group.__dragged = false; });
-      group.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openNode(); } });
-      group.addEventListener("mouseenter", () => { for (const eg of qsa(".net-edge")) eg.classList.add("edge-dim"); for (const eg of connectedEdgeGroups()) { eg.classList.remove("edge-dim"); eg.classList.add("edge-show-label"); } });
-      group.addEventListener("mouseleave", () => { for (const eg of qsa(".net-edge")) eg.classList.remove("edge-dim"); for (const eg of connectedEdgeGroups()) if (!eg.classList.contains("edge-pinned")) eg.classList.remove("edge-show-label"); });
-      group.addEventListener("pointerdown", (event) => {
-        event.stopPropagation();
-        const rect = svg.getBoundingClientRect(); const nx = (event.clientX - rect.left) / Math.max(rect.width,1); const ny = (event.clientY - rect.top) / Math.max(rect.height,1);
-        const sx = state.networkView.w / Math.max(rect.width,1), sy = state.networkView.h / Math.max(rect.height,1);
-        group.setPointerCapture?.(event.pointerId);
-        group.__drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offsetX: p.x - (state.networkView.x + nx * state.networkView.w), offsetY: p.y - (state.networkView.y + ny * state.networkView.h), sx, sy };
+
+      const openNode = () => {
+        if (type === "account") inspectAccountNode(node.id);
+        else showEntityInfo(node.id, type);
+      };
+      group.addEventListener("click", openNode);
+      group.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openNode();
+        }
       });
-      group.addEventListener("pointermove", (event) => {
-        const d = group.__drag; if (!d) return; if (Math.hypot(event.clientX-d.startX,event.clientY-d.startY) > 3) group.__dragged = true;
-        const rect = svg.getBoundingClientRect(); const nx = (event.clientX - rect.left) / Math.max(rect.width,1); const ny = (event.clientY - rect.top) / Math.max(rect.height,1);
-        p.x = state.networkView.x + nx * state.networkView.w + d.offsetX; p.y = state.networkView.y + ny * state.networkView.h + d.offsetY;
-        positions[node.id] = { x:p.x, y:p.y }; updateNetworkGeometry();
-      });
-      const endDrag = () => { if (group.__drag) { group.__drag = null; state.networkLayout = state.networkLayout || {}; state.networkLayout.positions = { ...(state.networkLayout.positions || {}), [node.id]: { ...p } }; } };
-      group.addEventListener("pointerup", endDrag); group.addEventListener("pointercancel", endDrag);
-      nodeLayer.appendChild(group); nodeRefs.push({ node, group, position:p, shape, label });
+      nodeLayer.appendChild(group);
     }
-
-    function updateNetworkGeometry() {
-      for (const ref of nodeRefs) {
-        const p = positions[ref.node.id]; if (!p) continue; ref.position.x = p.x; ref.position.y = p.y;
-        const type = String(ref.node.type || "account").toLowerCase();
-        if (type === "device") ref.shape.setAttribute("x", p.x-11), ref.shape.setAttribute("y", p.y-11);
-        else if (type === "merchant") ref.shape.setAttribute("points", `${p.x},${p.y-13} ${p.x+13},${p.y} ${p.x},${p.y+13} ${p.x-13},${p.y}`);
-        else if (type === "location") ref.shape.setAttribute("points", `${p.x},${p.y-14} ${p.x+12},${p.y+10} ${p.x-12},${p.y+10}`);
-        else ref.shape.setAttribute("cx", p.x), ref.shape.setAttribute("cy", p.y);
-        if (ref.label) { const focus = ref.node.id === focusId; ref.label.setAttribute("x", p.x); ref.label.setAttribute("y", p.y - (focus ? 34 : 21)); }
-      }
-      for (const er of edgeRefs) {
-        const a = positions[er.edge.source], b = positions[er.edge.target]; if (!a || !b) continue;
-        const d = makePath(a,b,er.curve); er.path.setAttribute("d",d.d); er.hit.setAttribute("d",d.d);
-        if (er.labelGroup) { const text = er.labelGroup.querySelector("text"), bg = er.labelGroup.querySelector("rect"); if (text) text.setAttribute("x",d.lx), text.setAttribute("y",d.ly-2); if (bg) { const width = Number(bg.getAttribute("width") || 44); bg.setAttribute("x",d.lx-width/2); bg.setAttribute("y",d.ly-12); } }
-      }
-    }
-
-    // Keep positions for the next live refresh.
-    state.networkLayout = { positions: { ...positions }, nodes: mainNodes, edges: visibleEdges, focused };
-    updateNetworkGeometry();
-
-    if (collateralRoot) {
-      collateralDevices.sort((a,b) => b.degree-a.degree || String(a.node.id).localeCompare(String(b.node.id)));
-      for (const item of collateralDevices.slice(0,32)) {
-        const box=document.createElement("div"); box.className="collateral-item";
-        const title=document.createElement("strong"); title.textContent=item.node.label || item.node.id;
-        const subtitle=document.createElement("span"); subtitle.textContent=`${item.degree} linked account${item.degree===1?"":"s"} · collateral only`;
-        box.appendChild(title); box.appendChild(subtitle); box.addEventListener("click",()=>showEntityInfo(item.node.id,"device")); collateralRoot.appendChild(box);
-      }
-      if (!collateralRoot.children.length) collateralRoot.innerHTML='<div class="collateral-empty">No low-connectivity devices are outside the main graph.</div>';
-    }
-    if (collateralCount) collateralCount.textContent=String(Math.min(collateralDevices.length,32));
   }
 
   async function inspectAccountNode(accountId) {
@@ -1254,18 +1023,13 @@
     $("overviewInvestigate")?.addEventListener("click", () => investigateAccount($("overviewSearch")?.value));
     $("investigateBtn")?.addEventListener("click", () => investigateAccount($("investigationSearch")?.value));
     $("globalSearch")?.addEventListener("keydown", (event) => { if (event.key === "Enter") investigateAccount(event.target.value); });
-    $("networkSearch")?.addEventListener("keydown", (event) => { if (event.key === "Enter") { state.networkFocus = event.target.value.trim().toUpperCase(); setView("network"); drawNetwork(state.networkGraph); } });
+    $("networkSearch")?.addEventListener("keydown", (event) => { if (event.key === "Enter") { state.networkFocus = event.target.value.trim().toUpperCase(); setView("network"); } });
     $("networkRefresh")?.addEventListener("click", loadNetwork);
-    qsa("[data-network-mode]").forEach((button) => button.addEventListener("click", () => {
-      qsa("[data-network-mode]").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      state.networkMode = button.dataset.networkMode || "alerts";
-      drawNetwork(state.networkGraph);
-    }));
     qsa(".net-filter").forEach((button) => button.addEventListener("click", () => {
       qsa(".net-filter").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
       state.networkFilter = button.dataset.filter;
+      if (state.networkFilter === "all") state.networkFocus = "";
       drawNetwork(state.networkGraph);
     }));
     $("saveSettings")?.addEventListener("click", saveSettings);
@@ -1312,11 +1076,6 @@
         if (state.currentView === "overview") {
           renderTransactionFeed(recentData.transactions || [], "overviewFeed");
           renderOverviewAlerts(state.alerts.slice(0, 5));
-        } else if (state.currentView === "network") {
-          // Refresh graph data without throwing away the user's pan/zoom or dragged node positions.
-          const networkData = await get("/api/network");
-          state.networkGraph = networkData.graph || networkData;
-          drawNetwork(state.networkGraph);
         }
       } catch (error) {
         console.error("[FinSentinels] Polling failed:", error);

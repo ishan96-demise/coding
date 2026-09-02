@@ -4,11 +4,11 @@
 
 `GET /api/health`
 
-Returns service and loaded graph counts.
+Returns service and loaded graph counts from the combined normal + mock transaction dataset.
 
 `GET /api/data-quality`
 
-Returns transaction count, duplicate-ID count and account count.
+Returns combined transaction count, duplicate-ID count and account count.
 
 ## Investigation
 

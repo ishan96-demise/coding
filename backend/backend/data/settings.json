@@ -1,0 +1,5 @@
+{
+  "high_threshold": 80,
+  "watch_threshold": 35,
+  "graph_depth": 5
+}

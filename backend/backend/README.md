@@ -50,6 +50,7 @@ FastAPI provides the HTTP API and serves the frontend. JSON files are intentiona
 The packaged dataset contains:
 
 - 99 account IDs: `ACC_001` through `ACC_099`
+- The backend combines `data/normal_transactions.json` (baseline population) with `data/mock_transactions.json` (fraud scenarios) into one graph.
 - 376 transaction records
 - Device, merchant and location relationships
 - A deliberate three-account fraud ring: `ACC_097 → ACC_098 → ACC_099 → ACC_097`

@@ -1,0 +1,1029 @@
+[
+  {
+    "case_id": "CASE-0001",
+    "account_id": "ACC_097",
+    "priority": "HIGH",
+    "status": "CLOSED",
+    "risk_score": 99,
+    "risk_status": "HIGH RISK",
+    "reasons": [
+      "Circular fund routing detected (1 cycle(s))",
+      "Shared device usage detected (1 shared device(s))",
+      "Mule-account pattern detected from high pass-through fund flow",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High-value transfer activity detected",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_097. Primary signal: Circular fund routing detected (1 cycle(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-01-01",
+        "evidence_type": "Graph signal",
+        "description": "Circular fund routing detected (1 cycle(s))",
+        "timestamp": "2026-08-27T10:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-01-02",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T10:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-01-03",
+        "evidence_type": "Graph signal",
+        "description": "Mule-account pattern detected from high pass-through fund flow",
+        "timestamp": "2026-08-27T10:03:00Z"
+      },
+      {
+        "evidence_id": "EVD-01-04",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T10:04:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_097.",
+        "timestamp": "2026-08-27T10:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-27T10:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "4 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T10:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T10:00:00Z",
+    "updated_at": "2026-08-27T10:45:00Z"
+  },
+  {
+    "case_id": "CASE-0002",
+    "account_id": "ACC_098",
+    "priority": "HIGH",
+    "status": "INVESTIGATING",
+    "risk_score": 99,
+    "risk_status": "HIGH RISK",
+    "reasons": [
+      "Circular fund routing detected (1 cycle(s))",
+      "Shared device usage detected (1 shared device(s))",
+      "Mule-account pattern detected from high pass-through fund flow",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High-value transfer activity detected",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_098. Primary signal: Circular fund routing detected (1 cycle(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-02-01",
+        "evidence_type": "Graph signal",
+        "description": "Circular fund routing detected (1 cycle(s))",
+        "timestamp": "2026-08-27T11:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-02-02",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T11:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-02-03",
+        "evidence_type": "Graph signal",
+        "description": "Mule-account pattern detected from high pass-through fund flow",
+        "timestamp": "2026-08-27T11:03:00Z"
+      },
+      {
+        "evidence_id": "EVD-02-04",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T11:04:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_098.",
+        "timestamp": "2026-08-27T11:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to INVESTIGATING for analyst review.",
+        "timestamp": "2026-08-27T11:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "4 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T11:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T11:00:00Z",
+    "updated_at": "2026-08-27T11:45:00Z"
+  },
+  {
+    "case_id": "CASE-0003",
+    "account_id": "ACC_099",
+    "priority": "CRITICAL",
+    "status": "OPEN",
+    "risk_score": 99,
+    "risk_status": "HIGH RISK",
+    "reasons": [
+      "Circular fund routing detected (1 cycle(s))",
+      "Shared device usage detected (1 shared device(s))",
+      "Mule-account pattern detected from high pass-through fund flow",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High-value transfer activity detected",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_099. Primary signal: Circular fund routing detected (1 cycle(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-03-01",
+        "evidence_type": "Graph signal",
+        "description": "Circular fund routing detected (1 cycle(s))",
+        "timestamp": "2026-08-27T12:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-03-02",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T12:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-03-03",
+        "evidence_type": "Graph signal",
+        "description": "Mule-account pattern detected from high pass-through fund flow",
+        "timestamp": "2026-08-27T12:03:00Z"
+      },
+      {
+        "evidence_id": "EVD-03-04",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T12:04:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_099.",
+        "timestamp": "2026-08-27T12:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "4 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T12:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T12:00:00Z",
+    "updated_at": "2026-08-27T12:45:00Z"
+  },
+  {
+    "case_id": "CASE-0004",
+    "account_id": "ACC_080",
+    "priority": "HIGH",
+    "status": "CLOSED",
+    "risk_score": 40,
+    "risk_status": "WATCH",
+    "reasons": [
+      "Shared device usage detected (1 shared device(s))",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_080. Primary signal: Shared device usage detected (1 shared device(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-04-01",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T13:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-04-02",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T13:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-04-03",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T13:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_080.",
+        "timestamp": "2026-08-27T13:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-27T13:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T13:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T13:00:00Z",
+    "updated_at": "2026-08-27T13:45:00Z"
+  },
+  {
+    "case_id": "CASE-0005",
+    "account_id": "ACC_081",
+    "priority": "HIGH",
+    "status": "OPEN",
+    "risk_score": 40,
+    "risk_status": "WATCH",
+    "reasons": [
+      "Shared device usage detected (1 shared device(s))",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_081. Primary signal: Shared device usage detected (1 shared device(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-05-01",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T14:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-05-02",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T14:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-05-03",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T14:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_081.",
+        "timestamp": "2026-08-27T14:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T14:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T14:00:00Z",
+    "updated_at": "2026-08-27T14:45:00Z"
+  },
+  {
+    "case_id": "CASE-0006",
+    "account_id": "ACC_070",
+    "priority": "HIGH",
+    "status": "INVESTIGATING",
+    "risk_score": 53,
+    "risk_status": "WATCH",
+    "reasons": [
+      "Shared device usage detected (1 shared device(s))",
+      "Mule-account pattern detected from high pass-through fund flow",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_070. Primary signal: Shared device usage detected (1 shared device(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-06-01",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T15:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-06-02",
+        "evidence_type": "Graph signal",
+        "description": "Mule-account pattern detected from high pass-through fund flow",
+        "timestamp": "2026-08-27T15:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-06-03",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T15:03:00Z"
+      },
+      {
+        "evidence_id": "EVD-06-04",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T15:04:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_070.",
+        "timestamp": "2026-08-27T15:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to INVESTIGATING for analyst review.",
+        "timestamp": "2026-08-27T15:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "4 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T15:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T15:00:00Z",
+    "updated_at": "2026-08-27T15:45:00Z"
+  },
+  {
+    "case_id": "CASE-0007",
+    "account_id": "ACC_071",
+    "priority": "HIGH",
+    "status": "OPEN",
+    "risk_score": 41,
+    "risk_status": "WATCH",
+    "reasons": [
+      "Shared device usage detected (1 shared device(s))",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_071. Primary signal: Shared device usage detected (1 shared device(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-07-01",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T16:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-07-02",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T16:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-07-03",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T16:03:00Z"
+      },
+      {
+        "evidence_id": "EVD-07-04",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-27T16:04:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_071.",
+        "timestamp": "2026-08-27T16:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "4 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T16:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T16:00:00Z",
+    "updated_at": "2026-08-27T16:45:00Z"
+  },
+  {
+    "case_id": "CASE-0008",
+    "account_id": "ACC_072",
+    "priority": "MEDIUM",
+    "status": "CLOSED",
+    "risk_score": 28,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_072. Primary signal: Elevated transaction velocity (3 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-08-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T17:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-08-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T17:02:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_072.",
+        "timestamp": "2026-08-27T17:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-27T17:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "2 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T17:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T17:00:00Z",
+    "updated_at": "2026-08-27T17:45:00Z"
+  },
+  {
+    "case_id": "CASE-0009",
+    "account_id": "ACC_050",
+    "priority": "MEDIUM",
+    "status": "OPEN",
+    "risk_score": 29,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_050. Primary signal: Elevated transaction velocity (3 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-09-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T18:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-09-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T18:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-09-03",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-27T18:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_050.",
+        "timestamp": "2026-08-27T18:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T18:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T18:00:00Z",
+    "updated_at": "2026-08-27T18:45:00Z"
+  },
+  {
+    "case_id": "CASE-0010",
+    "account_id": "ACC_051",
+    "priority": "MEDIUM",
+    "status": "CLOSED",
+    "risk_score": 28,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_051. Primary signal: Elevated transaction velocity (3 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-10-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T19:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-10-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T19:02:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_051.",
+        "timestamp": "2026-08-27T19:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-27T19:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "2 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T19:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T19:00:00Z",
+    "updated_at": "2026-08-27T19:45:00Z"
+  },
+  {
+    "case_id": "CASE-0011",
+    "account_id": "ACC_060",
+    "priority": "MEDIUM",
+    "status": "OPEN",
+    "risk_score": 28,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_060. Primary signal: Elevated transaction velocity (3 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-11-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T20:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-11-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T20:02:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_060.",
+        "timestamp": "2026-08-27T20:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "2 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T20:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T20:00:00Z",
+    "updated_at": "2026-08-27T20:45:00Z"
+  },
+  {
+    "case_id": "CASE-0012",
+    "account_id": "ACC_065",
+    "priority": "LOW",
+    "status": "CLOSED",
+    "risk_score": 32,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (4 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_065. Primary signal: Elevated transaction velocity (4 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-12-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (4 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T21:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-12-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T21:02:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_065.",
+        "timestamp": "2026-08-27T21:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-27T21:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "2 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T21:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T21:00:00Z",
+    "updated_at": "2026-08-27T21:45:00Z"
+  },
+  {
+    "case_id": "CASE-0013",
+    "account_id": "ACC_075",
+    "priority": "HIGH",
+    "status": "INVESTIGATING",
+    "risk_score": 40,
+    "risk_status": "WATCH",
+    "reasons": [
+      "Shared device usage detected (1 shared device(s))",
+      "Elevated transaction velocity (3 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_075. Primary signal: Shared device usage detected (1 shared device(s))",
+    "evidence": [
+      {
+        "evidence_id": "EVD-13-01",
+        "evidence_type": "Graph signal",
+        "description": "Shared device usage detected (1 shared device(s))",
+        "timestamp": "2026-08-27T22:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-13-02",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (3 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T22:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-13-03",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T22:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_075.",
+        "timestamp": "2026-08-27T22:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to INVESTIGATING for analyst review.",
+        "timestamp": "2026-08-27T22:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T22:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T22:00:00Z",
+    "updated_at": "2026-08-27T22:45:00Z"
+  },
+  {
+    "case_id": "CASE-0014",
+    "account_id": "ACC_010",
+    "priority": "LOW",
+    "status": "CLOSED",
+    "risk_score": 33,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (4 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_010. Primary signal: Elevated transaction velocity (4 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-14-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (4 transactions in a 60-minute window)",
+        "timestamp": "2026-08-27T23:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-14-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-27T23:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-14-03",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-27T23:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_010.",
+        "timestamp": "2026-08-27T23:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-27T23:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-27T23:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-27T23:00:00Z",
+    "updated_at": "2026-08-27T23:45:00Z"
+  },
+  {
+    "case_id": "CASE-0015",
+    "account_id": "ACC_020",
+    "priority": "MEDIUM",
+    "status": "OPEN",
+    "risk_score": 33,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (4 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_020. Primary signal: Elevated transaction velocity (4 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-15-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (4 transactions in a 60-minute window)",
+        "timestamp": "2026-08-28T00:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-15-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-28T00:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-15-03",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-28T00:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_020.",
+        "timestamp": "2026-08-28T00:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-28T00:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-28T00:00:00Z",
+    "updated_at": "2026-08-28T00:45:00Z"
+  },
+  {
+    "case_id": "CASE-0016",
+    "account_id": "ACC_030",
+    "priority": "LOW",
+    "status": "CLOSED",
+    "risk_score": 33,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (4 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_030. Primary signal: Elevated transaction velocity (4 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-16-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (4 transactions in a 60-minute window)",
+        "timestamp": "2026-08-28T01:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-16-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-28T01:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-16-03",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-28T01:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_030.",
+        "timestamp": "2026-08-28T01:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-28T01:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-28T01:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-28T01:00:00Z",
+    "updated_at": "2026-08-28T01:45:00Z"
+  },
+  {
+    "case_id": "CASE-0017",
+    "account_id": "ACC_040",
+    "priority": "MEDIUM",
+    "status": "OPEN",
+    "risk_score": 33,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (4 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_040. Primary signal: Elevated transaction velocity (4 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-17-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (4 transactions in a 60-minute window)",
+        "timestamp": "2026-08-28T02:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-17-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-28T02:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-17-03",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-28T02:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_040.",
+        "timestamp": "2026-08-28T02:00:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-28T02:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-28T02:00:00Z",
+    "updated_at": "2026-08-28T02:45:00Z"
+  },
+  {
+    "case_id": "CASE-0018",
+    "account_id": "ACC_055",
+    "priority": "LOW",
+    "status": "CLOSED",
+    "risk_score": 33,
+    "risk_status": "SAFE",
+    "reasons": [
+      "Elevated transaction velocity (4 transactions in a 60-minute window)",
+      "High network connectivity (+12 pts)",
+      "Network centrality (+1 pts)"
+    ],
+    "note": "Seeded analyst case for ACC_055. Primary signal: Elevated transaction velocity (4 transactions in a 60-minute window)",
+    "evidence": [
+      {
+        "evidence_id": "EVD-18-01",
+        "evidence_type": "Graph signal",
+        "description": "Elevated transaction velocity (4 transactions in a 60-minute window)",
+        "timestamp": "2026-08-28T03:01:00Z"
+      },
+      {
+        "evidence_id": "EVD-18-02",
+        "evidence_type": "Graph signal",
+        "description": "High network connectivity (+12 pts)",
+        "timestamp": "2026-08-28T03:02:00Z"
+      },
+      {
+        "evidence_id": "EVD-18-03",
+        "evidence_type": "Graph signal",
+        "description": "Network centrality (+1 pts)",
+        "timestamp": "2026-08-28T03:03:00Z"
+      }
+    ],
+    "timeline": [
+      {
+        "event_id": "EVT-0001",
+        "type": "CASE_CREATED",
+        "title": "Case created",
+        "description": "Investigation opened for ACC_055.",
+        "timestamp": "2026-08-28T03:00:00Z"
+      },
+      {
+        "event_id": "EVT-0002",
+        "type": "STATUS_CHANGE",
+        "title": "Status changed",
+        "description": "Case moved to CLOSED for analyst review.",
+        "timestamp": "2026-08-28T03:30:00Z"
+      },
+      {
+        "event_id": "EVT-0003",
+        "type": "EVIDENCE",
+        "title": "Evidence reviewed",
+        "description": "3 graph-derived evidence items attached.",
+        "timestamp": "2026-08-28T03:45:00Z"
+      }
+    ],
+    "created_at": "2026-08-28T03:00:00Z",
+    "updated_at": "2026-08-28T03:45:00Z"
+  }
+]

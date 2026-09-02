@@ -226,7 +226,6 @@ def _build_graph() -> nx.MultiDiGraph:
         if device:
             graph.add_node(device, type="device")
             _add_device_link(graph, source, device, tx)
-            _add_device_link(graph, target, device, tx)
 
         if merchant:
             graph.add_node(merchant, type="merchant")
@@ -495,17 +494,10 @@ def _serialize_nodes(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
                 if edge.get("edge_type") == "USED_DEVICE"
                 and graph.nodes[source].get("type") == "account"
             })
-        shape_by_type = {
-            "account": "circle",
-            "device": "rounded-square",
-            "merchant": "diamond",
-            "location": "triangle",
-        }
         nodes.append({
             "id": node_id,
             "label": data.get("label", node_id),
             "type": node_type,
-            "shape": shape_by_type.get(node_type, "circle"),
             "connection_count": degree,
             "shared_account_count": shared_accounts,
             "is_shared": shared_accounts > 1,
@@ -514,75 +506,23 @@ def _serialize_nodes(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
 
 
 def _serialize_edges(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
-    """Serialize graph edges while collapsing repeated transfers.
-
-    The underlying MultiDiGraph remains lossless; only the API representation
-    is compacted for visualization. Multiple TRANSFER edges between the same
-    ordered pair become one edge carrying transaction_count, transaction_ids,
-    total_amount, max_amount and latest timestamp. Non-transfer relationship
-    edges keep their existing relationship identity.
-    """
-    transfer_groups: dict[tuple[str, str, str], dict[str, Any]] = {}
-    relationship_edges: list[dict[str, Any]] = []
-
+    edges = []
     for u, v, key, data in graph.edges(keys=True, data=True):
-        relation = data.get("edge_type", "LINK")
-        if relation == "TRANSFER":
-            group_key = (str(u), str(v), relation)
-            row = transfer_groups.get(group_key)
-            tx_id = data.get("transaction_id") or str(key)
-            amount = float(data.get("amount") or 0)
-            timestamp = data.get("timestamp")
-            if row is None:
-                row = {
-                    "id": f"TRANSFER:{u}:{v}",
-                    "source": u,
-                    "target": v,
-                    "relation": relation,
-                    "transaction_id": tx_id,
-                    "transaction_ids": [],
-                    "amount": amount,
-                    "total_amount": amount,
-                    "max_amount": amount,
-                    "timestamp": timestamp,
-                    "device_id": data.get("device_id"),
-                    "ip_address": data.get("ip_address"),
-                    "merchant_id": data.get("merchant_id"),
-                    "location": data.get("location"),
-                    "transaction_count": 0,
-                    "weight": 1,
-                }
-                transfer_groups[group_key] = row
-            row["transaction_ids"].append(tx_id)
-            row["transaction_count"] += 1
-            row["total_amount"] += amount
-            row["max_amount"] = max(row["max_amount"], amount)
-            row["weight"] = max(1, min(6, row["transaction_count"]))
-            if timestamp and (not row["timestamp"] or str(timestamp) > str(row["timestamp"])):
-                row["timestamp"] = timestamp
-                row["transaction_id"] = tx_id
-            continue
-
-        relationship_edges.append({
+        edges.append({
             "id": str(key),
             "source": u,
             "target": v,
-            "relation": relation,
+            "relation": data.get("edge_type", "LINK"),
             "transaction_id": data.get("transaction_id"),
-            "transaction_ids": data.get("transaction_ids", []),
             "amount": data.get("amount", 0),
-            "total_amount": data.get("amount", 0),
-            "max_amount": data.get("amount", 0),
             "timestamp": data.get("timestamp"),
             "device_id": data.get("device_id"),
             "ip_address": data.get("ip_address"),
             "merchant_id": data.get("merchant_id"),
             "location": data.get("location"),
             "transaction_count": data.get("transaction_count", 1),
-            "weight": 1,
         })
-
-    return list(transfer_groups.values()) + relationship_edges
+    return edges
 
 
 def get_subgraph(G: nx.MultiDiGraph, target_id: str, depth: int = 2) -> dict[str, Any]:
@@ -592,31 +532,6 @@ def get_subgraph(G: nx.MultiDiGraph, target_id: str, depth: int = 2) -> dict[str
     depth = max(1, min(int(depth), 5))
     nearby = nx.single_source_shortest_path_length(G.to_undirected(), target_id, cutoff=depth)
     subgraph = G.subgraph(nearby.keys()).copy()
-    return {
-        "nodes": _serialize_nodes(subgraph),
-        "edges": _serialize_edges(subgraph),
-    }
-
-
-def get_alert_subgraph(G: nx.MultiDiGraph, alert_account_ids: set[str], depth: int = 1) -> dict[str, Any]:
-    """Return a compact alert-centric subgraph for visualization.
-
-    Includes alert accounts and their direct relationship neighbors. This keeps
-    dense networks readable while preserving all edges among the selected nodes.
-    """
-    seeds = {str(a).strip().upper() for a in alert_account_ids if str(a).strip()}
-    seeds = {a for a in seeds if a in G and G.nodes[a].get("type") == "account"}
-    if not seeds:
-        return {"nodes": [], "edges": []}
-
-    depth = max(1, min(int(depth), 1))
-    undirected = G.to_undirected()
-    keep: set[str] = set()
-    for seed in seeds:
-        nearby = nx.single_source_shortest_path_length(undirected, seed, cutoff=depth)
-        keep.update(nearby.keys())
-
-    subgraph = G.subgraph(keep).copy()
     return {
         "nodes": _serialize_nodes(subgraph),
         "edges": _serialize_edges(subgraph),

@@ -1,0 +1,55 @@
+FinSentinels — PS-29 Final Build
+
+Runtime
+- Python 3.10+
+- FastAPI
+- Uvicorn
+- NetworkX
+- Pydantic
+
+Frontend
+- HTML5
+- CSS3
+- Vanilla JavaScript
+- SVG graph rendering
+
+Data
+- 99 accounts: ACC_001–ACC_099
+- 376 transactions
+- Typed nodes: account/device/merchant/location
+- Seeded cases, evidence and timelines
+
+Core routes
+- /
+- /app.js
+- /static/*
+- /api/health
+- /api/data-quality
+- /api/score/{account_id}
+- /api/graph/{account_id}
+- /api/transaction/{account_id}
+- /api/network
+- /api/accounts
+- /api/transactions/recent
+- /api/alerts
+- /api/analytics
+- /api/cases
+- /api/cases/{case_id}
+- /api/cases/{case_id}/evidence
+- /api/profile
+- /api/settings
+- /api/ingest
+
+Detection
+- Fraud cycles
+- Shared devices
+- Transaction velocity
+- Connectivity / centrality
+- Mule-account signal
+- High-value transaction context
+
+Case lifecycle
+- OPEN
+- INVESTIGATING
+- CLOSED
+- DISMISSED

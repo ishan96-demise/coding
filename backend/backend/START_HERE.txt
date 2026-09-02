@@ -1,0 +1,46 @@
+FINSENTINELS — SIH PS-29
+============================================
+
+Problem Statement: 29 — AI-Based Financial Fraud Network Detection
+
+RUN
+---
+1. Double-click run.bat
+2. Wait for verification to show PASS
+3. Browser opens automatically at:
+   http://127.0.0.1:8000/
+4. Login:
+   Analyst: R. Kulkarni
+   Access code: FINSENTINELS
+
+MANUAL START
+------------
+PowerShell:
+  cd E:\coding\backend\backend
+  .\run.bat
+
+Or:
+  python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
+KEY DEMO ACCOUNTS
+-----------------
+Fraud ring: ACC_097, ACC_098, ACC_099
+Mule signal: ACC_070, ACC_071
+Watch cluster: ACC_080–ACC_083
+Normal reference: ACC_001
+
+IMPORTANT: The backend loads both normal_transactions.json and mock_transactions.json.
+Use /api/data-quality to confirm the combined dataset is loaded (expected: 99 accounts).
+
+DEMO FLOW
+---------
+Overview → Transaction Network → Investigate ACC_097 →
+show cycle/shared device → Create Case → Cases → Open Case →
+add evidence → move to INVESTIGATING → close case → Analytics.
+
+NOTES
+-----
+• Current MVP uses explainable NetworkX graph heuristics.
+• GNN / GraphSAGE is a Phase-2 roadmap item, not falsely claimed as live code.
+• Near-real-time behavior is implemented with polling against the API.
+• The graph currently demonstrates Account, Device, Merchant and Location node types.
