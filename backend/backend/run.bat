@@ -124,9 +124,6 @@ echo.
 echo [3/3] Starting FinSentinels...
 echo.
 echo ------------------------------------------------------------
-echo Dashboard:
-echo http://127.0.0.1:8000/
-echo.
 echo API Docs:
 echo http://127.0.0.1:8000/docs
 echo ------------------------------------------------------------
@@ -135,7 +132,7 @@ echo Press CTRL+C in this window to stop FinSentinels.
 echo.
 
 REM Open browser after a short delay so Uvicorn has time to start.
-start "" /b cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8000/"
+start "" /b cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8000/docs"
 
 "%PY%" -m uvicorn main:app --host 127.0.0.1 --port 8000
 

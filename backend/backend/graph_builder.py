@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import networkx as nx
@@ -11,6 +11,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MOCK_FILE = os.path.join(DATA_DIR, "mock_transactions.json")
 NORMAL_FILE = os.path.join(DATA_DIR, "normal_transactions.json")
+LIVE_FILE = os.path.join(
+    os.environ.get("FINSENTINELS_RUNTIME_DIR", "/tmp/finsentinels_runtime")
+    if os.getenv("VERCEL") == "1" else DATA_DIR,
+    "live_transactions.json",
+)
 
 REQUIRED_FIELDS = {
     "transaction_id",
@@ -19,6 +24,31 @@ REQUIRED_FIELDS = {
     "amount",
     "timestamp",
 }
+
+# Location-derived country is useful context, but it is not a source/target
+# route. Keep it separate so the UI never invents a cross-border transfer.
+LOCATION_COUNTRIES = {
+    "ahmedabad": "India",
+    "bengaluru": "India",
+    "chennai": "India",
+    "delhi": "India",
+    "hyderabad": "India",
+    "kolkata": "India",
+    "mumbai": "India",
+    "pune": "India",
+}
+
+
+def _country_from_location(location: Any) -> str | None:
+    value = str(location or "").strip()
+    if not value:
+        return None
+    # Accept explicit "City, Country" values from enriched ingestion feeds.
+    if "," in value:
+        country = value.rsplit(",", 1)[-1].strip()
+        if country:
+            return country
+    return LOCATION_COUNTRIES.get(value.casefold())
 
 
 def find_data_file() -> str:
@@ -48,6 +78,8 @@ def find_data_files() -> list[str]:
     mock = find_data_file()
     if os.path.abspath(mock) not in {os.path.abspath(path) for path in files}:
         files.append(mock)
+    if os.path.isfile(LIVE_FILE):
+        files.append(LIVE_FILE)
 
     return files
 
@@ -96,6 +128,16 @@ def _normalize_transaction(index: int, tx: dict[str, Any]) -> dict[str, Any]:
         parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValueError(f"Transaction {tx_id} has an invalid timestamp") from exc
+    if parsed_timestamp.tzinfo is None:
+        parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
+
+    currency = str(tx.get("currency") or "INR").strip().upper()
+    try:
+        amount_inr = round(float(tx["amount_inr"]), 2) if tx.get("amount_inr") is not None else (round(amount, 2) if currency == "INR" else None)
+        instructed_amount = round(float(tx["instructed_amount"]), 2) if tx.get("instructed_amount") is not None else None
+        fx_divergence_ratio = float(tx["fx_divergence_ratio"]) if tx.get("fx_divergence_ratio") is not None else None
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Transaction {tx_id} has invalid currency or FX metadata") from exc
 
     return {
         **tx,
@@ -103,12 +145,29 @@ def _normalize_transaction(index: int, tx: dict[str, Any]) -> dict[str, Any]:
         "source_account": source,
         "target_account": target,
         "amount": round(amount, 2),
+        "currency": currency,
+        "amount_inr": amount_inr,
+        "instructed_amount": instructed_amount,
+        "instructed_currency": str(tx.get("instructed_currency") or "").strip().upper() or None,
+        "fx_divergence_ratio": fx_divergence_ratio,
+        "currency_mismatch": bool(tx.get("currency_mismatch") or (
+            tx.get("instructed_currency") and str(tx.get("instructed_currency")).strip().upper() != str(tx.get("currency") or "INR").strip().upper()
+        )),
+        "fx_unconverted": bool(tx.get("fx_unconverted") or (
+            str(tx.get("currency") or "INR").strip().upper() != "INR" and tx.get("amount_inr") is None
+        )),
+        "source_provider": str(tx.get("source_provider") or "").strip() or None,
+        "source_event_id": str(tx.get("source_event_id") or "").strip() or None,
+        "direction": str(tx.get("direction") or "").strip().upper() or None,
         "timestamp": timestamp,
         "timestamp_dt": parsed_timestamp,
         "device_id": str(tx.get("device_id", "")).strip() or None,
         "ip_address": str(tx.get("ip_address", "")).strip() or None,
         "merchant_id": str(tx.get("merchant_id", "")).strip() or None,
         "location": str(tx.get("location", "")).strip() or None,
+        "location_country": str(tx.get("location_country", "")).strip() or _country_from_location(tx.get("location")),
+        "source_country": str(tx.get("source_country", "")).strip() or None,
+        "target_country": str(tx.get("target_country", "")).strip() or None,
     }
 
 
@@ -206,9 +265,10 @@ def _build_graph() -> nx.MultiDiGraph:
         device = tx.get("device_id")
         merchant = tx.get("merchant_id")
         location = tx.get("location")
+        ip_address = tx.get("ip_address")
 
-        graph.add_node(source, type="account")
-        graph.add_node(target, type="account")
+        graph.add_node(source, type="account", **({"label": tx["source_name"]} if tx.get("source_name") else {}))
+        graph.add_node(target, type="account", **({"label": tx["target_name"]} if tx.get("target_name") else {}))
         graph.add_edge(
             source,
             target,
@@ -216,17 +276,38 @@ def _build_graph() -> nx.MultiDiGraph:
             edge_type="TRANSFER",
             transaction_id=tx["transaction_id"],
             amount=tx["amount"],
+            currency=tx.get("currency", "INR"),
+            amount_inr=tx.get("amount_inr"),
+            instructed_amount=tx.get("instructed_amount"),
+            instructed_currency=tx.get("instructed_currency"),
+            fx_divergence_ratio=tx.get("fx_divergence_ratio"),
+            currency_mismatch=tx.get("currency_mismatch", False),
+            fx_unconverted=tx.get("fx_unconverted", False),
+            source_provider=tx.get("source_provider"),
+            source_event_id=tx.get("source_event_id"),
+            direction=tx.get("direction"),
             timestamp=tx["timestamp"],
             device_id=device,
             ip_address=tx.get("ip_address"),
             merchant_id=merchant,
             location=location,
+            location_country=tx.get("location_country"),
+            source_country=tx.get("source_country"),
+            target_country=tx.get("target_country"),
+            source_name=tx.get("source_name"),
+            target_name=tx.get("target_name"),
         )
 
         if device:
             graph.add_node(device, type="device")
+            # Transaction telemetry describes the initiating endpoint. Do not
+            # attribute the sender's device to the receiving account.
             _add_device_link(graph, source, device, tx)
-            _add_device_link(graph, target, device, tx)
+
+        if ip_address:
+            ip_id = f"IP:{ip_address}"
+            graph.add_node(ip_id, type="ip_address", label=ip_address)
+            _add_shared_attribute_link(graph, source, ip_id, "USED_IP", tx)
 
         if merchant:
             graph.add_node(merchant, type="merchant")
@@ -277,11 +358,26 @@ def get_account_transactions(G: nx.MultiDiGraph, account_id: str) -> list[dict[s
             "source": source,
             "target": target,
             "amount": data.get("amount", 0),
+            "currency": data.get("currency", "INR"),
+            "amount_inr": data.get("amount_inr"),
+            "instructed_amount": data.get("instructed_amount"),
+            "instructed_currency": data.get("instructed_currency"),
+            "fx_divergence_ratio": data.get("fx_divergence_ratio"),
+            "currency_mismatch": data.get("currency_mismatch", False),
+            "fx_unconverted": data.get("fx_unconverted", False),
+            "source_provider": data.get("source_provider"),
+            "source_event_id": data.get("source_event_id"),
+            "direction": data.get("direction"),
             "timestamp": data.get("timestamp"),
             "device_id": data.get("device_id"),
             "ip_address": data.get("ip_address"),
             "merchant_id": data.get("merchant_id"),
             "location": data.get("location"),
+            "location_country": data.get("location_country"),
+            "source_country": data.get("source_country"),
+            "target_country": data.get("target_country"),
+            "source_name": data.get("source_name"),
+            "target_name": data.get("target_name"),
         })
     rows.sort(key=lambda row: row.get("timestamp") or "")
     return rows
@@ -352,8 +448,8 @@ def _transaction_velocity_count(transactions: list[dict[str, Any]], window_minut
 
 def _flow_metrics(G: nx.MultiDiGraph, account_id: str) -> dict[str, float | int]:
     tx = get_account_transactions(G, account_id)
-    inbound = sum(float(row["amount"]) for row in tx if row["target"] == account_id)
-    outbound = sum(float(row["amount"]) for row in tx if row["source"] == account_id)
+    inbound = sum(_risk_amount(row) for row in tx if row["target"] == account_id)
+    outbound = sum(_risk_amount(row) for row in tx if row["source"] == account_id)
     total = inbound + outbound
     retention = 0.0 if inbound == 0 else max(0.0, min(1.0, (inbound - outbound) / inbound))
     pass_through = min(inbound, outbound) / max(inbound, 1.0)
@@ -365,6 +461,15 @@ def _flow_metrics(G: nx.MultiDiGraph, account_id: str) -> dict[str, float | int]
         "retention_ratio": round(retention, 3),
         "velocity_window_count": _transaction_velocity_count(tx),
     }
+
+
+def _risk_amount(tx: dict[str, Any]) -> float:
+    """Return INR-canonical value, excluding foreign values without a reference rate."""
+    if tx.get("amount_inr") is not None:
+        return max(0.0, float(tx["amount_inr"]))
+    if str(tx.get("currency") or "INR").strip().upper() == "INR":
+        return max(0.0, float(tx.get("amount") or 0))
+    return 0.0
 
 
 def _risk_factors(G: nx.MultiDiGraph, account_id: str) -> dict[str, Any]:
@@ -391,7 +496,7 @@ def _risk_factors(G: nx.MultiDiGraph, account_id: str) -> dict[str, Any]:
         and flows["outbound"] >= 7000
     )
     mule_points = 12 if mule_signal else 0
-    high_value_points = 8 if any(float(tx.get("amount", 0)) >= 20000 for tx in transactions) else 0
+    high_value_points = 8 if any(_risk_amount(tx) >= 20000 for tx in transactions) else 0
 
     return {
         "cycle_points": cycle_points,
@@ -473,6 +578,15 @@ def analyze_account(G: nx.MultiDiGraph, account_id: str) -> dict[str, Any]:
             "mule_flow": 100 if f["mule_signal"] else 0,
             "high_value_activity": 100 if f["high_value_points"] else 0,
         },
+        "factor_points": {
+            "circular_routing": f["cycle_points"],
+            "shared_devices": f["shared_device_points"],
+            "transaction_velocity": f["velocity_points"],
+            "network_connectivity": f["connectivity_points"],
+            "network_centrality": f["centrality_points"],
+            "mule_flow": f["mule_points"],
+            "high_value_activity": f["high_value_points"],
+        },
         "shared_devices": get_shared_devices(G, account_id),
         "transaction_count": f["transaction_count"],
         "cycle_count": f["cycle_count"],
@@ -488,11 +602,12 @@ def _serialize_nodes(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
         node_type = data.get("type", "account")
         degree = int(graph.degree(node_id))
         shared_accounts = 0
-        if node_type == "device":
+        if node_type in {"device", "ip_address"}:
+            relation_type = "USED_DEVICE" if node_type == "device" else "USED_IP"
             shared_accounts = len({
                 source
                 for source, _target, _key, edge in graph.in_edges(node_id, keys=True, data=True)
-                if edge.get("edge_type") == "USED_DEVICE"
+                if edge.get("edge_type") == relation_type
                 and graph.nodes[source].get("type") == "account"
             })
         shape_by_type = {
@@ -500,6 +615,7 @@ def _serialize_nodes(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
             "device": "rounded-square",
             "merchant": "diamond",
             "location": "triangle",
+            "ip_address": "hexagon",
         }
         nodes.append({
             "id": node_id,
@@ -522,20 +638,21 @@ def _serialize_edges(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
     total_amount, max_amount and latest timestamp. Non-transfer relationship
     edges keep their existing relationship identity.
     """
-    transfer_groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    transfer_groups: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     relationship_edges: list[dict[str, Any]] = []
 
     for u, v, key, data in graph.edges(keys=True, data=True):
         relation = data.get("edge_type", "LINK")
         if relation == "TRANSFER":
-            group_key = (str(u), str(v), relation)
+            currency = str(data.get("currency") or "INR").upper()
+            group_key = (str(u), str(v), relation, currency)
             row = transfer_groups.get(group_key)
             tx_id = data.get("transaction_id") or str(key)
             amount = float(data.get("amount") or 0)
             timestamp = data.get("timestamp")
             if row is None:
                 row = {
-                    "id": f"TRANSFER:{u}:{v}",
+                    "id": f"TRANSFER:{u}:{v}:{currency}",
                     "source": u,
                     "target": v,
                     "relation": relation,
@@ -543,13 +660,27 @@ def _serialize_edges(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
                     "transaction_ids": [],
                     "amount": amount,
                     "total_amount": amount,
+                    "currency": currency,
+                    "amount_inr": data.get("amount_inr"),
+                    "total_amount_inr": data.get("amount_inr") or (amount if currency == "INR" else None),
+                    "instructed_currency": data.get("instructed_currency"),
+                    "currency_mismatch": data.get("currency_mismatch", False),
+                    "fx_divergence_ratio": data.get("fx_divergence_ratio"),
                     "max_amount": amount,
                     "timestamp": timestamp,
+                    "first_timestamp": timestamp,
+                    "last_timestamp": timestamp,
                     "device_id": data.get("device_id"),
                     "ip_address": data.get("ip_address"),
                     "merchant_id": data.get("merchant_id"),
                     "location": data.get("location"),
+                    "location_country": data.get("location_country"),
+                    "source_country": data.get("source_country"),
+                    "target_country": data.get("target_country"),
+                    "source_name": data.get("source_name"),
+                    "target_name": data.get("target_name"),
                     "transaction_count": 0,
+                    "evidence_source": "transaction_feed",
                     "weight": 1,
                 }
                 transfer_groups[group_key] = row
@@ -557,9 +688,18 @@ def _serialize_edges(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
             row["transaction_count"] += 1
             row["total_amount"] += amount
             row["max_amount"] = max(row["max_amount"], amount)
+            canonical_amount = data.get("amount_inr")
+            if canonical_amount is None and currency == "INR":
+                canonical_amount = amount
+            if canonical_amount is not None:
+                row["total_amount_inr"] = float(row["total_amount_inr"] or 0) + float(canonical_amount)
+            row["currency_mismatch"] = bool(row["currency_mismatch"] or data.get("currency_mismatch", False))
             row["weight"] = max(1, min(6, row["transaction_count"]))
+            if timestamp and (not row["first_timestamp"] or str(timestamp) < str(row["first_timestamp"])):
+                row["first_timestamp"] = timestamp
             if timestamp and (not row["timestamp"] or str(timestamp) > str(row["timestamp"])):
                 row["timestamp"] = timestamp
+                row["last_timestamp"] = timestamp
                 row["transaction_id"] = tx_id
             continue
 
@@ -572,13 +712,19 @@ def _serialize_edges(graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
             "transaction_ids": data.get("transaction_ids", []),
             "amount": data.get("amount", 0),
             "total_amount": data.get("amount", 0),
+            "currency": data.get("currency", "INR"),
+            "amount_inr": data.get("amount_inr"),
+            "total_amount_inr": data.get("amount_inr"),
             "max_amount": data.get("amount", 0),
             "timestamp": data.get("timestamp"),
+            "first_timestamp": data.get("timestamp"),
+            "last_timestamp": data.get("last_timestamp", data.get("timestamp")),
             "device_id": data.get("device_id"),
             "ip_address": data.get("ip_address"),
             "merchant_id": data.get("merchant_id"),
             "location": data.get("location"),
             "transaction_count": data.get("transaction_count", 1),
+            "evidence_source": "transaction_feed",
             "weight": 1,
         })
 

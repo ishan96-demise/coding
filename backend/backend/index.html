@@ -70,18 +70,7 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}svg{display:bloc
 </style>
 </head>
 <body>
-<div id="login">
-  <form class="login-card" id="loginForm">
-    <div class="login-mark"><svg viewBox="0 0 100 100" fill="none" aria-hidden="true"><defs><linearGradient id="loginGrad" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7EC8E3"/><stop offset="1" stop-color="#6C4FD1"/></linearGradient></defs><path d="M50 4L90 18V48C90 74 73 90 50 98C27 90 10 74 10 48V18L50 4Z" fill="url(#loginGrad)" fill-opacity=".1" stroke="url(#loginGrad)" stroke-width="3"/><path d="M30 38L50 30L70 40L64 64L38 62L30 38Z" stroke="#F5F8FF" stroke-width="1.7"/><circle cx="50" cy="52" r="10" fill="#080B11" stroke="#7EC8E3" stroke-width="2"/><circle cx="50" cy="52" r="4" fill="#F5F8FF"/></svg></div>
-    <h1>FinSentinels</h1>
-    <div class="login-sub">Fraud Network Intelligence · Investigator Workspace</div>
-    <div class="login-field"><label for="loginName">Analyst</label><input id="loginName" value="R. Kulkarni" autocomplete="name"></div>
-    <div class="login-field"><label for="loginCode">Access code</label><input id="loginCode" type="password" placeholder="Enter access code" autocomplete="off"></div>
-    <div class="login-error" id="loginError"></div>
-    <div class="login-actions"><button class="primary" id="loginBtn" type="submit">Enter Workspace</button></div>
-    <div class="login-foot">Demo access code · <b>FINSENTINELS</b></div>
-  </form>
-</div>
+<div id="login"><section class="login-card" aria-labelledby="legacy-login-title"><div class="login-mark" aria-hidden="true">FS</div><h1 id="legacy-login-title">Fin Sentinels</h1><div class="login-sub">The legacy static interface has been retired.</div><p class="login-error">Start the secured Next.js workspace and sign in there. Use the URL printed by the Next.js development server.</p></section></div>
 
 <div class="app" id="app">
   <nav class="rail" aria-label="Primary navigation">

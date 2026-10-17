@@ -15,6 +15,7 @@
     alerts: [],
     networkGraph: null,
     pollTimer: null,
+    lastNationalIntelligenceAt: 0,
     loggedIn: false,
   };
 
@@ -115,9 +116,9 @@
     qsa(".rail-btn[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
 
     const labels = {
-      overview: ["Overview", "Fraud network command center"],
+      overview: ["Overview", "National fraud intelligence layer"],
       network: ["Transaction Network", "Accounts, devices, merchants and money flows"],
-      investigations: ["Investigations", "Explainable account-level analysis"],
+      investigations: ["Investigations", "Explainable coordinated network analysis"],
       alerts: ["Risk Alerts", "Prioritized accounts requiring attention"],
       cases: ["Cases", "Investigation lifecycle and analyst queue"],
       "case-detail": ["Case Detail", "Evidence, timeline and analyst actions"],
@@ -176,6 +177,10 @@
       state.networkGraph = networkData.graph || networkData;
       state.currentGraph = state.currentGraph || state.networkGraph;
       renderOverviewAlerts(state.alerts.slice(0, 5));
+      if (Date.now() - state.lastNationalIntelligenceAt > 15000) {
+        state.lastNationalIntelligenceAt = Date.now();
+        get("/api/intelligence").then(renderNationalIntelligence).catch((error) => console.warn("[FinSentinels] National intelligence unavailable:", error));
+      }
       const recentRows = Array.isArray(recentData.transactions) ? recentData.transactions : getTransferEdges(state.networkGraph).slice(-8).reverse();
       renderTransactionFeed(recentRows, "overviewFeed");
       updateAlertCount(state.alerts.length);
@@ -192,6 +197,22 @@
     if (!badge) return;
     badge.textContent = count;
     badge.style.display = count ? "grid" : "none";
+  }
+
+  function renderNationalIntelligence(data) {
+    const view = $("view-overview");
+    const kpis = view?.querySelector(".kpis");
+    if (!view || !kpis) return;
+    let card = $("nationalIntelligenceCard");
+    if (!card) {
+      card = document.createElement("div");
+      card.id = "nationalIntelligenceCard";
+      card.className = "card";
+      card.style.marginTop = "12px";
+      kpis.insertAdjacentElement("afterend", card);
+    }
+    const status = String(data.network_status || "SAFE").toUpperCase();
+    card.innerHTML = `<div class="card-head"><h3>National Fraud Intelligence Layer</h3><span class="pill ${riskTier(status)}">${esc(status)}</span></div><div class="card-body"><div class="detail-grid"><div class="detail-box"><label>Network risk</label><strong>${Number(data.network_risk_score || 0)}/100 · ${esc(status)}</strong></div><div class="detail-box"><label>Accounts / transactions</label><strong>${Number(data.account_count || 0).toLocaleString("en-IN")} / ${Number(data.transaction_count || 0).toLocaleString("en-IN")}</strong></div><div class="detail-box"><label>Linked infrastructure</label><strong>${Number(data.shared_device_count || 0)} devices · ${Number(data.shared_ip_count || 0)} IPs</strong></div></div><div class="small" style="margin-top:10px">Feed: ${esc(data.source_connection || "POST /api/ingest")} · Countries: ${esc((data.observed_countries || []).join(", ") || "not provided")}</div></div>`;
   }
 
   async function loadAlerts() {
@@ -226,7 +247,7 @@
     return `<div class="item" data-account="${esc(alert.account_id)}">
       <div class="item-main"><div class="item-title">${esc(alert.account_id)}</div>
       <div class="item-sub">${esc((alert.reasons || []).slice(0, 2).join(" · ") || extras || "Risk signal detected")}${extras ? ` · ${esc(extras)}` : ""}</div></div>
-      <div class="item-actions"><span class="pill ${riskTier(alert.status)}">${esc(alert.status)} · ${alert.risk_score ?? 0}</span></div>
+      <div class="item-actions"><span class="pill ${riskTier(alert.status)}">Network ${alert.risk_score ?? 0}/100 · ${esc(alert.status)}</span></div>
     </div>`;
   }
 
@@ -288,20 +309,25 @@
 
     root.innerHTML = `<div class="kpis">
       <div class="kpi"><label>Account</label><strong>${esc(data.account_id)}</strong></div>
-      <div class="kpi"><label>Risk score</label><strong style="color:${status === "HIGH RISK" ? "var(--red)" : status === "WATCH" ? "var(--amber)" : "var(--green)"}">${data.risk_score ?? 0}</strong></div>
+      <div class="kpi"><label>Network risk score</label><strong style="color:${status === "HIGH RISK" ? "var(--red)" : status === "WATCH" ? "var(--amber)" : "var(--green)"}">${data.risk_score ?? 0}/100 · ${esc(status)}</strong></div>
       <div class="kpi"><label>Status</label><strong><span class="pill ${riskTier(status)}">${esc(status)}</span></strong></div>
       <div class="kpi"><label>Entities</label><strong>${graph?.nodes?.length || 0}</strong></div>
+      <div class="kpi"><label>GNN anomaly</label><strong>${data.gnn?.available ? `${data.gnn.score}/100` : "Offline"}</strong></div>
     </div>
     <div class="result-grid">
       <div class="card"><div class="card-head"><h3>Explainable Risk Assessment</h3><span class="small">Graph evidence</span></div><div class="card-body">
+        <div class="note"><b>Network score</b><br>${esc(data.risk_explanation || `Network risk is ${status} at ${data.risk_score ?? 0}/100.`)} Account-level signal: ${data.account_risk_score ?? data.rule_risk_score ?? data.risk_score ?? 0}/100.</div>
+        <div class="note"><b>Score breakdown</b><br>Highest linked-account signal: ${data.network?.score_components?.highest_linked_account_signal ?? data.risk_score ?? 0}; coordinated-network bonus: +${data.network?.score_components?.linked_network_bonus ?? 0}; shared-IP bonus: +${data.network?.score_components?.shared_ip_bonus ?? 0}; cross-border context: +${data.network?.score_components?.cross_border_context_bonus ?? 0}.</div>
+        <div class="note"><b>Why this score</b><br>${esc((data.network?.explanation || []).join(" · ") || "No network explanation available.")}</div>
         ${factorBlocks}
         <div class="note"><b>Why the engine flagged it</b><br>${esc(reasons.join(" · ") || "No significant suspicious indicators detected.")}</div>
+        <div class="note"><b>Graph Neural Network</b><br>${esc(data.gnn?.available ? `GraphSAGE-style anomaly score: ${data.gnn.score}/100 · ${data.gnn.confidence != null ? `relative deviation ${Math.round(data.gnn.confidence * 100)}%` : ""}. ${((data.gnn.evidence || []).join(" · "))}` : "GNN is offline; rule-based graph analysis is still active.")}</div>
         <div class="note"><b>Shared devices</b><br>${esc(devices)}</div>
         <div class="note"><b>Fund flow</b><br>${esc(formatFlow(data.flow_metrics || {}))}</div>
         ${status !== "SAFE" ? '<button class="primary" id="investigationCreateCase" style="margin-top:12px;width:100%">Create Case / Flag for Review</button>' : '<div class="note">This account is currently below the case-creation threshold.</div>'}
       </div></div>
       <div class="card"><div class="card-head"><h3>Connected Entities</h3><button class="secondary" id="openInvestigationNetwork" type="button">Open Network</button></div><div class="card-body"><div class="items">
-        ${(graph?.nodes || []).map((node) => `<div class="item" data-node="${esc(node.id)}" data-node-type="${esc(node.type || "account")}"><div class="item-main"><div class="item-title">${esc(node.id)}</div><div class="item-sub">${node.type === "device" ? "Shared infrastructure" : node.type === "merchant" ? "Merchant relationship" : node.type === "location" ? "Geographic context" : "Account"}</div></div><div class="item-actions"><span class="pill ${node.type === "account" ? "neutral" : "watch"}">${esc(String(node.type || "account").toUpperCase())}</span></div></div>`).join("") || '<div class="small">No nearby entities.</div>'}
+        ${(graph?.nodes || []).map((node) => `<div class="item" data-node="${esc(node.id)}" data-node-type="${esc(node.type || "account")}"><div class="item-main"><div class="item-title">${esc(node.id)}</div><div class="item-sub">${node.type === "device" ? "Shared device infrastructure" : node.type === "ip_address" ? "Shared IP infrastructure" : node.type === "merchant" ? "Merchant relationship" : node.type === "location" ? "Geographic context" : "Network account"}</div></div><div class="item-actions"><span class="pill ${node.type === "account" ? "neutral" : "watch"}">${esc(String(node.type || "account").toUpperCase())}</span></div></div>`).join("") || '<div class="small">No nearby entities.</div>'}
       </div></div></div>
     </div>
     <div class="card" style="margin-top:12px"><div class="card-head"><h3>Transaction Intelligence</h3><span class="small">${esc(data.account_id)}</span></div><div class="card-body" style="padding:0"><div id="investigationFeed" class="feed"></div></div></div>`;
@@ -333,11 +359,16 @@
       transaction_id: edge.transaction_id,
       source: edge.source,
       target: edge.target,
+      source_name: edge.source_name,
+      target_name: edge.target_name,
       amount: edge.amount,
       timestamp: edge.timestamp,
       device_id: edge.device_id,
+      ip_address: edge.ip_address,
       merchant_id: edge.merchant_id,
       location: edge.location,
+      source_country: edge.source_country,
+      target_country: edge.target_country,
     }));
   }
 
@@ -352,8 +383,9 @@
       const amount = Number(tx.amount || 0);
       const risk = amount >= 20000 ? "HIGH RISK" : amount >= 5000 ? "WATCH" : "SAFE";
       const stamp = tx.timestamp ? new Date(tx.timestamp).toLocaleTimeString("en-IN", { hour12: false }) : "—";
-      const context = [tx.device_id, tx.merchant_id, tx.location].filter(Boolean).join(" · ");
-      return `<div class="feed-row"><div class="feed-time">${esc(stamp)}</div><div class="feed-flow"><b>${esc(tx.source || "—")}</b> → <b>${esc(tx.target || "—")}</b>${context ? ` · ${esc(context)}` : ""}</div><div class="feed-amount">${money(amount)}</div><span class="pill ${riskTier(risk)}">${risk}</span></div>`;
+      const context = [tx.device_id, tx.ip_address, tx.merchant_id, tx.location].filter(Boolean).join(" · ");
+      const route = tx.source_country || tx.target_country ? ` (${tx.source_country || "?"} → ${tx.target_country || "?"})` : "";
+      return `<div class="feed-row"><div class="feed-time">${esc(stamp)}</div><div class="feed-flow"><b>${esc(tx.source_name || tx.source || "—")}</b> → <b>${esc(tx.target_name || tx.target || "—")}</b>${esc(route)}${context ? ` · ${esc(context)}` : ""}</div><div class="feed-amount">${money(amount)}</div><span class="pill ${riskTier(risk)}">${risk}</span></div>`;
     }).join("");
   }
 
@@ -415,7 +447,7 @@
     const risk = String(caseItem.risk_status || "SAFE").toUpperCase();
     return `<div class="item" data-open-case="${esc(caseItem.case_id)}">
       <div class="item-main"><div class="item-title">${esc(caseItem.case_id)} · ${esc(caseItem.account_id)}</div><div class="item-sub">${esc(caseItem.note || "No analyst note")} · ${esc(time(caseItem.created_at))}</div></div>
-      <div class="item-actions"><span class="pill ${riskTier(risk)}">${esc(risk)} · ${caseItem.risk_score ?? 0}</span><span class="pill ${status === "CLOSED" || status === "DISMISSED" ? "safe" : "watch"}">${esc(status)}</span>${!["CLOSED", "DISMISSED"].includes(status) ? `<button class="secondary" data-close-case="${esc(caseItem.case_id)}" type="button">Close</button>` : ""}</div>
+      <div class="item-actions"><span class="pill ${riskTier(risk)}">Network ${caseItem.network_risk_score ?? caseItem.risk_score ?? 0}/100 · ${esc(risk)}</span><span class="pill ${status === "CLOSED" || status === "DISMISSED" ? "safe" : "watch"}">${esc(status)}</span>${!["CLOSED", "DISMISSED"].includes(status) ? `<button class="secondary" data-close-case="${esc(caseItem.case_id)}" type="button">Close</button>` : ""}</div>
     </div>`;
   }
 
@@ -440,10 +472,10 @@
     const root = $("caseDetail");
     if (!root) return;
 
-    root.innerHTML = `<div class="case-header"><div><div class="case-id">${esc(caseItem.case_id)}</div><div class="case-account">${esc(caseItem.account_id)} · created ${esc(time(caseItem.created_at))}</div></div><div class="item-actions"><span class="pill ${riskTier(risk)}">${esc(risk)} · ${caseItem.risk_score ?? analysis.risk_score ?? 0}</span><span class="pill ${status === "CLOSED" ? "safe" : "watch"}">${esc(status)}</span></div></div>
+    root.innerHTML = `<div class="case-header"><div><div class="case-id">${esc(caseItem.case_id)}</div><div class="case-account">${esc(caseItem.account_id)} · created ${esc(time(caseItem.created_at))}</div></div><div class="item-actions"><span class="pill ${riskTier(risk)}">Network ${caseItem.network_risk_score ?? caseItem.risk_score ?? analysis.risk_score ?? 0}/100 · ${esc(risk)}</span><span class="pill ${status === "CLOSED" ? "safe" : "watch"}">${esc(status)}</span></div></div>
       <div class="case-detail" style="margin-top:14px">
         <div>
-          <div class="card"><div class="card-head"><h3>Case Summary</h3></div><div class="card-body"><div class="detail-grid"><div class="detail-box"><label>Account</label><strong>${esc(caseItem.account_id)}</strong></div><div class="detail-box"><label>Risk score</label><strong>${caseItem.risk_score ?? analysis.risk_score ?? 0}/100</strong></div><div class="detail-box"><label>Priority</label><strong>${esc(caseItem.priority || "MEDIUM")}</strong></div></div><div class="note"><b>Analyst note</b><br>${esc(caseItem.note || "No analyst note recorded.")}</div><div class="note"><b>Signals</b><br>${esc((caseItem.reasons || analysis.reasons || []).join(" · "))}</div></div></div>
+          <div class="card"><div class="card-head"><h3>Case Summary</h3></div><div class="card-body"><div class="detail-grid"><div class="detail-box"><label>Account</label><strong>${esc(caseItem.account_id)}</strong></div><div class="detail-box"><label>Network risk score</label><strong>${caseItem.network_risk_score ?? caseItem.risk_score ?? analysis.risk_score ?? 0}/100 · ${esc(risk)}</strong></div><div class="detail-box"><label>Priority</label><strong>${esc(caseItem.priority || "MEDIUM")}</strong></div></div><div class="note"><b>Analyst note</b><br>${esc(caseItem.note || "No analyst note recorded.")}</div><div class="note"><b>Signals</b><br>${esc((caseItem.reasons || analysis.reasons || []).join(" · "))}</div></div></div>
           <div class="card"><div class="card-head"><h3>Evidence</h3><span class="small">${evidence.length} item(s)</span></div><div class="card-body"><div class="evidence">${evidence.map((item) => `<div class="evidence-item"><b>${esc(item.evidence_type)}</b><span>${esc(item.description)}</span><span class="small">${esc(time(item.timestamp))}</span></div>`).join("") || '<div class="small">No evidence yet.</div>'}</div><div class="card-body" style="border-top:1px solid var(--line)"><div class="search-big"><input id="evidenceType" class="input" placeholder="Evidence type"><input id="evidenceDescription" class="input" placeholder="Observation / supporting evidence"><button class="primary" id="addEvidenceBtn" type="button">Add</button></div></div></div>
         </div>
         <div>
@@ -463,7 +495,7 @@
     const reasons = caseItem.reasons || caseItem.analysis?.reasons || [];
     const main = reasons[0] || "No major risk indicator recorded.";
     const secondary = reasons[1] || "The case remains under analyst review.";
-    return `FinSentinels assigned ${caseItem.risk_score ?? caseItem.analysis?.risk_score ?? 0}/100 to ${caseItem.account_id}. Primary graph signal: ${main}. Secondary signal: ${secondary}. The explanation is generated from the same graph evidence used by the case record.`;
+    return `FinSentinels assigned a network risk score of ${caseItem.network_risk_score ?? caseItem.analysis?.risk_score ?? caseItem.risk_score ?? 0}/100 (${caseItem.risk_status || caseItem.analysis?.status || "under review"}) to the network around ${caseItem.account_id}. Primary graph signal: ${main}. Secondary signal: ${secondary}. The score uses the same live graph analysis as account search.`;
   }
 
   async function addEvidence(caseId) {
@@ -617,7 +649,7 @@
   function normalizeNode(raw) {
     const node = raw || {};
     const rawType = String(node.type || node.node_type || node.entity_type || "account").toLowerCase();
-    const type = ["account", "device", "merchant", "location"].includes(rawType) ? rawType : "account";
+    const type = ["account", "device", "merchant", "location", "ip_address"].includes(rawType) ? rawType : "account";
     const riskScore = Number(node.risk_score ?? node.score ?? 0);
     const tier = String(node.tier || node.risk_tier || (riskScore > 70 ? "high" : "" )).toLowerCase();
     return { ...node, id: String(node.id ?? node.node_id ?? node.name ?? "").trim(), label: String(node.label ?? node.name ?? node.id ?? "").trim(), type, risk_score: Number.isFinite(riskScore) ? riskScore : 0, tier };
@@ -1091,10 +1123,10 @@
       state.currentGraph = data.graph || state.currentGraph;
       setText("insType", "ACCOUNT");
       setText("insId", aid);
-      setText("insScore", data.risk_score ?? 0);
+      setText("insScore", `${data.risk_score ?? 0}/100 · ${data.status || "SAFE"}`);
       const scoreNode = $("insScore");
       if (scoreNode) scoreNode.style.color = data.status === "HIGH RISK" ? "var(--risk-high)" : data.status === "WATCH" ? "var(--risk-watch)" : "var(--risk-safe)";
-      setText("insNote", (data.reasons || []).join(" · ") || "No significant suspicious graph indicators detected.");
+      setText("insNote", `Network risk ${data.risk_score ?? 0}/100 (${data.status || "SAFE"}); ${data.network?.account_count ?? 1} linked account(s). ${(data.network?.explanation || data.reasons || []).join(" · ")}`);
       setText("insDevices", (data.shared_devices || []).map((d) => d.device_id || d.device || d.id).filter(Boolean).join(", ") || "None detected");
       const factors = data.factors || {};
       const factorRoot = $("insFactors");
@@ -1219,29 +1251,7 @@
   }
 
   async function login() {
-    const name = ($( "loginName")?.value || "R. Kulkarni").trim() || "R. Kulkarni";
-    const code = ($( "loginCode")?.value || "").trim().toUpperCase();
-    if (code !== "FINSENTINELS") {
-      setText("loginError", "Invalid access code. Use FINSENTINELS.");
-      $("loginCode")?.focus();
-      return;
-    }
-    try {
-      localStorage.setItem("finSentinelsAnalyst", name);
-      state.loggedIn = true;
-      $("login")?.classList.add("hidden");
-      $("app")?.classList.remove("hidden");
-      $("app")?.style && ($("app").style.display = "grid");
-      setText("topProfileName", name);
-      setText("profileAvatar", initials(name));
-      setText("loginError", "");
-      setView("overview");
-      startPolling();
-      toast(`Access granted. Welcome, ${name}.`);
-    } catch (error) {
-      console.error("[FinSentinels] Login failed:", error);
-      setText("loginError", `Could not open workspace: ${error.message}`);
-    }
+    setText("loginError", "This legacy interface is retired. Start the secured Next.js workspace and use its analyst sign-in.");
   }
 
   function bind() {

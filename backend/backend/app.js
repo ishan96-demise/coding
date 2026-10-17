@@ -291,11 +291,13 @@
       <div class="kpi"><label>Risk score</label><strong style="color:${status === "HIGH RISK" ? "var(--red)" : status === "WATCH" ? "var(--amber)" : "var(--green)"}">${data.risk_score ?? 0}</strong></div>
       <div class="kpi"><label>Status</label><strong><span class="pill ${riskTier(status)}">${esc(status)}</span></strong></div>
       <div class="kpi"><label>Entities</label><strong>${graph?.nodes?.length || 0}</strong></div>
+      <div class="kpi"><label>GNN anomaly</label><strong>${data.gnn?.available ? `${data.gnn.score}/100` : "Offline"}</strong></div>
     </div>
     <div class="result-grid">
       <div class="card"><div class="card-head"><h3>Explainable Risk Assessment</h3><span class="small">Graph evidence</span></div><div class="card-body">
         ${factorBlocks}
         <div class="note"><b>Why the engine flagged it</b><br>${esc(reasons.join(" · ") || "No significant suspicious indicators detected.")}</div>
+        <div class="note"><b>Graph Neural Network</b><br>${esc(data.gnn?.available ? `GraphSAGE-style anomaly score: ${data.gnn.score}/100 · ${data.gnn.confidence != null ? `relative deviation ${Math.round(data.gnn.confidence * 100)}%` : ""}. ${((data.gnn.evidence || []).join(" · "))}` : "GNN is offline; rule-based graph analysis is still active.")}</div>
         <div class="note"><b>Shared devices</b><br>${esc(devices)}</div>
         <div class="note"><b>Fund flow</b><br>${esc(formatFlow(data.flow_metrics || {}))}</div>
         ${status !== "SAFE" ? '<button class="primary" id="investigationCreateCase" style="margin-top:12px;width:100%">Create Case / Flag for Review</button>' : '<div class="note">This account is currently below the case-creation threshold.</div>'}
@@ -1219,29 +1221,7 @@
   }
 
   async function login() {
-    const name = ($( "loginName")?.value || "R. Kulkarni").trim() || "R. Kulkarni";
-    const code = ($( "loginCode")?.value || "").trim().toUpperCase();
-    if (code !== "FINSENTINELS") {
-      setText("loginError", "Invalid access code. Use FINSENTINELS.");
-      $("loginCode")?.focus();
-      return;
-    }
-    try {
-      localStorage.setItem("finSentinelsAnalyst", name);
-      state.loggedIn = true;
-      $("login")?.classList.add("hidden");
-      $("app")?.classList.remove("hidden");
-      $("app")?.style && ($("app").style.display = "grid");
-      setText("topProfileName", name);
-      setText("profileAvatar", initials(name));
-      setText("loginError", "");
-      setView("overview");
-      startPolling();
-      toast(`Access granted. Welcome, ${name}.`);
-    } catch (error) {
-      console.error("[FinSentinels] Login failed:", error);
-      setText("loginError", `Could not open workspace: ${error.message}`);
-    }
+    setText("loginError", "This legacy interface is retired. Start the secured Next.js workspace and use its analyst sign-in.");
   }
 
   function bind() {

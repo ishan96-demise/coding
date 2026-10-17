@@ -1,0 +1,27 @@
+# Open Bank Project API base URL and version
+OBP_API_BASE_URL=https://apisandbox.openbankproject.com
+OBP_API_VERSION=v5.1.0
+
+# OAuth 2 bearer token obtained through your authorized OBP consent flow
+OBP_ACCESS_TOKEN=
+
+# Identifiers granted by your OBP sandbox/core administrator
+OBP_BANK_ID=
+OBP_VIEW_ID=
+OBP_ACCOUNT_IDS=
+
+# HMAC secret shared with a trusted callback signing gateway. Do not commit.
+OBP_WEBHOOK_SECRET=
+OBP_WEBHOOK_SIGNATURE_HEADER=x-sandbox-signature
+
+# Set only if your provider omits currency in the settlement amount object.
+OBP_DEFAULT_CURRENCY=
+FIN_SENTINELS_BASE_CURRENCY=INR
+
+# Bounded manual history polling
+OBP_SYNC_PAGE_SIZE=100
+OBP_SYNC_MAX_PAGES=10
+
+# Optional FastAPI / to Next.js redirect when the development server uses a
+# port other than its normal 3000 default.
+FIN_SENTINELS_FRONTEND_URL=http://127.0.0.1:3000/

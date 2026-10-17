@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --color-obsidian: #080b11;
+  --color-panel: #0d121b;
+  --color-panel-raised: #111925;
+  --color-terminal-cyan: #75e6dc;
+  --color-terminal-green: #a1edbd;
+  --color-terminal-amber: #f6bd68;
+  --color-terminal-red: #EF4444;
+}
+
+:root {
+  color-scheme: dark;
+  --line: rgba(154, 176, 203, .12);
+  --muted: #79869a;
+  --text: #dce5ef;
+  --panel: #0d121b;
+  --cyan: #75e6dc;
+  --green: #a1edbd;
+  --amber: #f6bd68;
+  --red: #EF4444;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; background: #080b11; }
+body { margin: 0; color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; }
+button, input { font: inherit; }
+::selection { background: rgba(117,230,220,.22); color: #fff; }
+
+.terminal-grid {
+  background-color: #080b11;
+  background-image: linear-gradient(rgba(130, 154, 182, .025) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 154, 182, .025) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.panel-glow { box-shadow: 0 0 0 1px rgba(117,230,220,.035), 0 12px 38px rgba(0,0,0,.2); }
+.glass-panel {
+  border: 1px solid rgba(154,176,203,.14);
+  background: linear-gradient(145deg, rgba(17,25,37,.91), rgba(9,14,21,.88));
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 16px 42px rgba(0,0,0,.22);
+}
+.graph-grid-overlay {
+  background-image:
+    linear-gradient(rgba(130,154,182,.027) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(130,154,182,.027) 1px, transparent 1px),
+    radial-gradient(ellipse at center, rgba(49,179,183,.035), transparent 65%);
+  background-size: 34px 34px, 34px 34px, auto;
+}
+.mono-metric { font-variant-numeric: tabular-nums; letter-spacing: .015em; }
+.border-beam i { position: absolute; top: -50%; left: -30%; width: 42%; height: 200%; transform: rotate(24deg); background: linear-gradient(90deg, transparent, rgba(117,230,220,.18), transparent); animation: beam-sweep 8s linear infinite; }
+@keyframes beam-sweep { from { left: -35%; } to { left: 120%; } }
+.panel-resize { resize: both; overflow: auto; min-width: 300px; min-height: 220px; }
+.panel-resize::-webkit-resizer { background: linear-gradient(135deg, transparent 48%, rgba(117,230,220,.5) 50%, transparent 57%); }
+.ticker-marquee { animation: ticker 45s linear infinite; }
+.ticker-marquee:hover { animation-play-state: paused; }
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.signal-pulse { animation: pulse 1.8s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(117,230,220,.45); } 70% { box-shadow: 0 0 0 7px rgba(117,230,220,0); } 100% { box-shadow: 0 0 0 0 rgba(117,230,220,0); } }
+.terminal-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.terminal-scroll::-webkit-scrollbar-thumb { background: rgba(127,146,168,.25); border-radius: 8px; }
+.terminal-scroll::-webkit-scrollbar-track { background: transparent; }
+.chart-tooltip { position: absolute; z-index: 5; pointer-events: none; border: 1px solid rgba(117,230,220,.25); border-radius: 6px; background: rgba(9,14,21,.94); padding: 7px 9px; color: #dce5ef; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; box-shadow: 0 10px 28px rgba(0,0,0,.35); }
+
+@media (max-width: 1200px) {
+  .terminal-main-grid { grid-template-columns: minmax(0,1fr) !important; }
+}
+
+@media (max-width: 900px) {
+  .terminal-sidebar { width: 58px !important; }
+  .sidebar-label { display: none; }
+}

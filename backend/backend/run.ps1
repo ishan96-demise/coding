@@ -20,5 +20,5 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 & ".venv\Scripts\python.exe" verify.py
 if ($LASTEXITCODE -ne 0) { throw "Verification failed." }
 
-Start-Process "http://127.0.0.1:8000/"
+Start-Process "http://127.0.0.1:8000/docs"
 & ".venv\Scripts\python.exe" -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
