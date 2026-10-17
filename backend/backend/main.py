@@ -1,4 +1,5 @@
 import json
+import base64
 import hashlib
 import os
 import re
@@ -14,6 +15,7 @@ from typing import Any
 import networkx as nx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -80,16 +82,16 @@ APP_JS_FILE = BASE_DIR / "app.js"
 SETTINGS_FILENAME = "settings.json"
 CASE_FILENAME = "cases.json"
 
-# Vercel's deployed filesystem is read-only.
-# /tmp is writable during a serverless function lifetime.
+# Vercel's deployed filesystem is read-only. Container deployments can set
+# FINSENTINELS_RUNTIME_DIR to a mounted persistent volume while keeping the
+# packaged seed data in DATA_DIR.
 IS_VERCEL = os.getenv("VERCEL") == "1"
-
-if IS_VERCEL:
-    RUNTIME_DATA_DIR = Path(
-        os.environ.get("FINSENTINELS_RUNTIME_DIR", "/tmp/finsentinels_runtime")
+RUNTIME_DATA_DIR = Path(
+    os.environ.get(
+        "FINSENTINELS_RUNTIME_DIR",
+        "/tmp/finsentinels_runtime" if IS_VERCEL else str(DATA_DIR),
     )
-else:
-    RUNTIME_DATA_DIR = DATA_DIR
+)
 
 CASE_FILE = RUNTIME_DATA_DIR / CASE_FILENAME
 CASE_EVIDENCE_DIR = RUNTIME_DATA_DIR / "case_evidence"
@@ -135,11 +137,44 @@ app = FastAPI(
 )
 
 
+def _verify_scoped_upload_token(token: str, case_id: str) -> bool:
+    secret = os.getenv("FIN_SENTINELS_UPLOAD_SECRET", "")
+    if len(secret) < 32 or not token or len(token) > 4096:
+        return False
+    try:
+        payload_part, signature_part = token.split(".", 1)
+        expected = hmac.new(secret.encode("utf-8"), payload_part.encode("ascii"), hashlib.sha256).digest()
+        supplied = base64.urlsafe_b64decode(signature_part + "=" * (-len(signature_part) % 4))
+        if not hmac.compare_digest(expected, supplied):
+            return False
+        payload = base64.urlsafe_b64decode(payload_part + "=" * (-len(payload_part) % 4))
+        claims = json.loads(payload.decode("utf-8"))
+        if not isinstance(claims, dict):
+            return False
+        now = int(datetime.now(timezone.utc).timestamp())
+        return (
+            claims.get("scope") == "case-evidence-upload"
+            and claims.get("case_id") == case_id
+            and isinstance(claims.get("sub"), str)
+            and isinstance(claims.get("exp"), int)
+            and now < claims["exp"] <= now + 600
+        )
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+
+
 @app.middleware("http")
 async def require_authenticated_frontend_proxy(request: Request, call_next):
     """Keep API data behind Next.js analyst auth; only signed OBP callbacks bypass it."""
     if request.url.path.lower().endswith((".bak", ".log", ".env")):
         return JSONResponse({"detail": "Not found."}, status_code=404)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    upload_match = re.fullmatch(r"/api/cases/([^/]+)/evidence/upload", request.url.path)
+    if request.method == "POST" and upload_match and _verify_scoped_upload_token(
+        request.headers.get("x-fin-sentinels-upload-token", ""), upload_match.group(1)
+    ):
+        return await call_next(request)
     if request.url.path.startswith("/api/") and request.url.path != "/api/integrations/obp/webhook":
         expected = os.getenv("FIN_SENTINELS_BACKEND_API_KEY", "")
         provided = request.headers.get("x-fin-sentinels-backend-key", "")
@@ -148,6 +183,27 @@ async def require_authenticated_frontend_proxy(request: Request, call_next):
         if not hmac.compare_digest(expected, provided):
             return JSONResponse({"detail": "Authentication required."}, status_code=401)
     return await call_next(request)
+
+
+def _cors_origins() -> list[str]:
+    values = [
+        item.strip().rstrip("/")
+        for item in os.getenv("FIN_SENTINELS_ALLOWED_ORIGINS", "").split(",")
+        if item.strip()
+    ]
+    frontend = os.getenv("FIN_SENTINELS_FRONTEND_URL", "http://127.0.0.1:3000/").strip().rstrip("/")
+    if frontend:
+        values.append(frontend)
+    return list(dict.fromkeys(values))
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Fin-Sentinels-Upload-Token"],
+    allow_credentials=False,
+)
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():

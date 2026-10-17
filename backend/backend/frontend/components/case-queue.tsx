@@ -139,7 +139,21 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
         upload.append("file", evidenceFile, evidenceFile.name);
         upload.append("evidence_type", evidenceType.trim());
         upload.append("description", evidenceDescription.trim());
-        const response = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence/upload`), { method: "POST", body: upload });
+        let response: Response;
+        if (process.env.NEXT_PUBLIC_FIN_DIRECT_UPLOAD === "true") {
+          const grantResponse = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence/upload-token`), { method: "POST", cache: "no-store" });
+          const grant = await grantResponse.json().catch(() => ({}));
+          if (!grantResponse.ok || typeof grant.token !== "string" || typeof grant.upload_url !== "string") {
+            throw new Error(`${evidenceFile.name}: ${typeof grant.detail === "string" ? grant.detail : "upload authorization failed"}`);
+          }
+          response = await fetch(grant.upload_url, {
+            method: "POST",
+            headers: { "x-fin-sentinels-upload-token": grant.token },
+            body: upload,
+          });
+        } else {
+          response = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence/upload`), { method: "POST", body: upload });
+        }
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(`${evidenceFile.name}: ${typeof payload.detail === "string" ? payload.detail : `upload failed (${response.status})`}`);
         completedFiles.add(fileKey);
