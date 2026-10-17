@@ -82,16 +82,9 @@ APP_JS_FILE = BASE_DIR / "app.js"
 SETTINGS_FILENAME = "settings.json"
 CASE_FILENAME = "cases.json"
 
-# Vercel's deployed filesystem is read-only. Container deployments can set
-# FINSENTINELS_RUNTIME_DIR to a mounted persistent volume while keeping the
-# packaged seed data in DATA_DIR.
-IS_VERCEL = os.getenv("VERCEL") == "1"
-RUNTIME_DATA_DIR = Path(
-    os.environ.get(
-        "FINSENTINELS_RUNTIME_DIR",
-        "/tmp/finsentinels_runtime" if IS_VERCEL else str(DATA_DIR),
-    )
-)
+# Runtime state can be stored separately from bundled seed data by setting
+# FINSENTINELS_RUNTIME_DIR (for example, to a mounted persistent volume).
+RUNTIME_DATA_DIR = Path(os.environ.get("FINSENTINELS_RUNTIME_DIR", str(DATA_DIR)))
 
 CASE_FILE = RUNTIME_DATA_DIR / CASE_FILENAME
 CASE_EVIDENCE_DIR = RUNTIME_DATA_DIR / "case_evidence"
@@ -474,13 +467,7 @@ def read_json_file(
     """
     Read runtime state first, then fall back to bundled seed data.
 
-    On Vercel:
-        /tmp/finsentinels_runtime/<filename>
-        ↓
-        bundled data/<filename>
-
-    Locally:
-        data/<filename>
+    The configured runtime directory takes precedence over bundled seed data.
     """
 
     if filename in IN_MEMORY_STORAGE:
@@ -528,14 +515,7 @@ def write_json_file(
     """
     Save runtime state.
 
-    Local:
-        data/<filename>
-
-    Vercel:
-        /tmp/finsentinels_runtime/<filename>
-
-    Memory is always updated even when filesystem persistence
-    is unavailable.
+    Memory is always updated even when filesystem persistence is unavailable.
     """
 
     IN_MEMORY_STORAGE[filename] = data
@@ -1055,7 +1035,6 @@ def health():
             "data_file": os.path.basename(
                 find_data_file()
             ),
-            "vercel": IS_VERCEL,
         }
 
     except Exception as exc:
@@ -2737,8 +2716,7 @@ async def startup():
     """
     Do not create/write bundled data files on startup.
 
-    On Vercel, the project filesystem is read-only.
-    Runtime data is initialized lazily by read/write helpers.
+    Runtime data is initialized separately from packaged seed data.
     """
 
     global GNN_ENGINE, GNN_TRANSACTIONS

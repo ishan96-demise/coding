@@ -14,7 +14,7 @@ NORMAL_FILE = os.path.join(DATA_DIR, "normal_transactions.json")
 LIVE_FILE = os.path.join(
     os.environ.get(
         "FINSENTINELS_RUNTIME_DIR",
-        "/tmp/finsentinels_runtime" if os.getenv("VERCEL") == "1" else DATA_DIR,
+        DATA_DIR,
     ),
     "live_transactions.json",
 )
