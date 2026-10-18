@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily</title>
+  <style>
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #e0e0e0;
+      --text-muted: #777;
+      --accent: #7c9bff;
+      --accent-dim: #4a6abf;
+      --danger: #e05555;
+      --success: #5cb87a;
+      --radius: 12px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    /* -- Header -- */
+    .header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding: 2rem 0;
+    }
+
+    .greeting {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.5px;
+    }
+
+    .clock {
+      font-size: 4rem;
+      font-weight: 200;
+      letter-spacing: 4px;
+      color: var(--text);
+    }
+
+    .date {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    /* -- Sections -- */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    /* -- Quick Links -- */
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .link-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.9rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .link-chip:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .link-chip .remove-link {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      margin-left: 0.2rem;
+    }
+
+    .link-chip .remove-link:hover { color: var(--danger); }
+
+    .add-link-btn {
+      padding: 0.45rem 0.9rem;
+      background: none;
+      border: 1px dashed var(--border);
+      border-radius: 99px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .add-link-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* -- To-Do -- */
+    .todo-input-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .todo-input-row input {
+      flex: 1;
+      padding: 0.6rem 0.9rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .todo-input-row input:focus { border-color: var(--accent); }
+
+    .todo-input-row button {
+      padding: 0.6rem 1rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .todo-input-row button:hover { background: var(--accent-dim); }
+
+    .todo-list { list-style: none; }
+
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .todo-item:last-child { border-bottom: none; }
+
+    .todo-item input[type="checkbox"] {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .todo-item input[type="checkbox"]:checked {
+      background: var(--success);
+      border-color: var(--success);
+    }
+
+    .todo-item .todo-text {
+      flex: 1;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    .todo-item.done .todo-text {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .todo-item .delete-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.8rem;
+      opacity: 0;
+      transition: all 0.2s;
+    }
+
+    .todo-item:hover .delete-btn { opacity: 1; }
+    .todo-item .delete-btn:hover { color: var(--danger); }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 1rem 0;
+    }
+
+    /* -- Notes -- */
+    .notes-area {
+      width: 100%;
+      min-height: 120px;
+      padding: 0.8rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .notes-area:focus { border-color: var(--accent); }
+
+    .save-hint {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      text-align: right;
+    }
+
+    /* -- Footer -- */
+    .footer {
+      text-align: center;
+      padding: 1rem 0;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    /* -- Modal -- */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      width: 90%;
+      max-width: 360px;
+    }
+
+    .modal h3 {
+      font-size: 0.95rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal input {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.85rem;
+      outline: none;
+      margin-bottom: 0.75rem;
+    }
+
+    .modal input:focus { border-color: var(--accent); }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .modal-actions button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .btn-cancel {
+      background: var(--bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border) !important;
+    }
+
+    .btn-save {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    @media (max-width: 500px) {
+      body { padding: 1rem; }
+      .clock { font-size: 2.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="greeting" id="greeting"></div>
+      <div class="clock" id="clock"></div>
+      <div class="date" id="date"></div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="section">
+      <div class="section-title">Quick Links</div>
+      <div class="links" id="links"></div>
+    </div>
+
+    <!-- To-Do -->
+    <div class="section">
+      <div class="section-title">Today</div>
+      <div class="todo-input-row">
+        <input type="text" id="todoInput" placeholder="Add a task..." />
+        <button onclick="addTodo()">Add</button>
+      </div>
+      <ul class="todo-list" id="todoList"></ul>
+    </div>
+
+    <!-- Notes -->
+    <div class="section">
+      <div class="section-title">Notes</div>
+      <textarea class="notes-area" id="notes" placeholder="Jot something down..."></textarea>
+      <div class="save-hint">auto-saved</div>
+    </div>
+
+    <div class="footer">open daily · keep it simple</div>
+  </div>
+
+  <!-- Add Link Modal -->
+  <div class="modal-overlay" id="linkModal">
+    <div class="modal">
+      <h3>Add Quick Link</h3>
+      <input type="text" id="linkName" placeholder="Name (e.g., GitHub)" />
+      <input type="text" id="linkUrl" placeholder="URL (e.g., https://github.com)" />
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeLinkModal()">Cancel</button>
+        <button class="btn-save" onclick="saveLink()">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // --- Clock & Greeting ---
+  function updateClock() {
+    const now = new Date();
+    const h = now.getHours();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+
+    document.getElementById('clock').textContent = time;
+    document.getElementById('date').textContent = dateStr;
+
+    let greet = 'Good evening';
+    if (h < 12) greet = 'Good morning';
+    else if (h < 17) greet = 'Good afternoon';
+    document.getElementById('greeting').textContent = greet;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // --- Storage helpers ---
+  function load(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+    catch { return fallback; }
+  }
+  function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+  // --- Quick Links ---
+  const DEFAULT_LINKS = [
+    { name: 'Google', url: 'https://google.com' },
+    { name: 'YouTube', url: 'https://youtube.com' },
+    { name: 'GitHub', url: 'https://github.com' },
+    { name: 'Gmail', url: 'https://mail.google.com' },
+  ];
+
+  let links = load('daily_links', DEFAULT_LINKS);
+
+  function renderLinks() {
+    const el = document.getElementById('links');
+    el.innerHTML = '';
+    links.forEach((link, i) => {
+      const a = document.createElement('a');
+      a.className = 'link-chip';
+      a.href = link.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.innerHTML = `${esc(link.name)}<span class="remove-link" onclick="removeLink(event,${i})">&times;</span>`;
+      el.appendChild(a);
+    });
+    const btn = document.createElement('button');
+    btn.className = 'add-link-btn';
+    btn.textContent = '+ Add';
+    btn.onclick = openLinkModal;
+    el.appendChild(btn);
+  }
+
+  function removeLink(e, i) {
+    e.preventDefault();
+    e.stopPropagation();
+    links.splice(i, 1);
+    save('daily_links', links);
+    renderLinks();
+  }
+
+  function openLinkModal() {
+    document.getElementById('linkModal').classList.add('active');
+    document.getElementById('linkName').value = '';
+    document.getElementById('linkUrl').value = '';
+    document.getElementById('linkName').focus();
+  }
+
+  function closeLinkModal() {
+    document.getElementById('linkModal').classList.remove('active');
+  }
+
+  function saveLink() {
+    const name = document.getElementById('linkName').value.trim();
+    let url = document.getElementById('linkUrl').value.trim();
+    if (!name || !url) return;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    links.push({ name, url });
+    save('daily_links', links);
+    renderLinks();
+    closeLinkModal();
+  }
+
+  renderLinks();
+
+  // --- To-Do ---
+  let todos = load('daily_todos', []);
+
+  function renderTodos() {
+    const list = document.getElementById('todoList');
+    list.innerHTML = '';
+    if (todos.length === 0) {
+      list.innerHTML = '<div class="empty-state">No tasks yet — add one above</div>';
+      return;
+    }
+    todos.forEach((todo, i) => {
+      const li = document.createElement('li');
+      li.className = 'todo-item' + (todo.done ? ' done' : '');
+      li.innerHTML = `
+        <input type="checkbox" ${todo.done ? 'checked' : ''} onchange="toggleTodo(${i})" />
+        <span class="todo-text">${esc(todo.text)}</span>
+        <button class="delete-btn" onclick="deleteTodo(${i})">✕</button>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  function addTodo() {
+    const input = document.getElementById('todoInput');
+    const text = input.value.trim();
+    if (!text) return;
+    todos.unshift({ text, done: false });
+    save('daily_todos', todos);
+    renderTodos();
+    input.value = '';
+    input.focus();
+  }
+
+  document.getElementById('todoInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTodo();
+  });
+
+  function toggleTodo(i) {
+    todos[i].done = !todos[i].done;
+    save('daily_todos', todos);
+    renderTodos();
+  }
+
+  function deleteTodo(i) {
+    todos.splice(i, 1);
+    save('daily_todos', todos);
+    renderTodos();
+  }
+
+  renderTodos();
+
+  // --- Notes ---
+  const notesEl = document.getElementById('notes');
+  notesEl.value = load('daily_notes', '');
+  let notesTimeout;
+  notesEl.addEventListener('input', () => {
+    clearTimeout(notesTimeout);
+    notesTimeout = setTimeout(() => save('daily_notes', notesEl.value), 300);
+  });
+
+  // --- Escape HTML ---
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // --- Close modal on backdrop click ---
+  document.getElementById('linkModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeLinkModal();
+  });
+
+  // --- Close modal on Escape ---
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLinkModal();
+  });
+</script>
+
+</body>
+</html>

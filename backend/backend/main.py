@@ -1,5 +1,4 @@
 import json
-import base64
 import hashlib
 import os
 import re
@@ -15,11 +14,10 @@ from typing import Any
 import networkx as nx
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from obp_integration import OBPError, normalize_event as normalize_obp_event, status as obp_status, sync_transactions as sync_obp_transactions, verify_webhook_signature
 
 
@@ -82,9 +80,8 @@ APP_JS_FILE = BASE_DIR / "app.js"
 SETTINGS_FILENAME = "settings.json"
 CASE_FILENAME = "cases.json"
 
-# Runtime state can be stored separately from bundled seed data by setting
-# FINSENTINELS_RUNTIME_DIR (for example, to a mounted persistent volume).
-RUNTIME_DATA_DIR = Path(os.environ.get("FINSENTINELS_RUNTIME_DIR", str(DATA_DIR)))
+_runtime_data_dir = os.getenv("FINSENTINELS_RUNTIME_DIR", "").strip()
+RUNTIME_DATA_DIR = Path(_runtime_data_dir).expanduser() if _runtime_data_dir else DATA_DIR
 
 CASE_FILE = RUNTIME_DATA_DIR / CASE_FILENAME
 CASE_EVIDENCE_DIR = RUNTIME_DATA_DIR / "case_evidence"
@@ -130,44 +127,11 @@ app = FastAPI(
 )
 
 
-def _verify_scoped_upload_token(token: str, case_id: str) -> bool:
-    secret = os.getenv("FIN_SENTINELS_UPLOAD_SECRET", "")
-    if len(secret) < 32 or not token or len(token) > 4096:
-        return False
-    try:
-        payload_part, signature_part = token.split(".", 1)
-        expected = hmac.new(secret.encode("utf-8"), payload_part.encode("ascii"), hashlib.sha256).digest()
-        supplied = base64.urlsafe_b64decode(signature_part + "=" * (-len(signature_part) % 4))
-        if not hmac.compare_digest(expected, supplied):
-            return False
-        payload = base64.urlsafe_b64decode(payload_part + "=" * (-len(payload_part) % 4))
-        claims = json.loads(payload.decode("utf-8"))
-        if not isinstance(claims, dict):
-            return False
-        now = int(datetime.now(timezone.utc).timestamp())
-        return (
-            claims.get("scope") == "case-evidence-upload"
-            and claims.get("case_id") == case_id
-            and isinstance(claims.get("sub"), str)
-            and isinstance(claims.get("exp"), int)
-            and now < claims["exp"] <= now + 600
-        )
-    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
-        return False
-
-
 @app.middleware("http")
 async def require_authenticated_frontend_proxy(request: Request, call_next):
     """Keep API data behind Next.js analyst auth; only signed OBP callbacks bypass it."""
     if request.url.path.lower().endswith((".bak", ".log", ".env")):
         return JSONResponse({"detail": "Not found."}, status_code=404)
-    if request.method == "OPTIONS":
-        return await call_next(request)
-    upload_match = re.fullmatch(r"/api/cases/([^/]+)/evidence/upload", request.url.path)
-    if request.method == "POST" and upload_match and _verify_scoped_upload_token(
-        request.headers.get("x-fin-sentinels-upload-token", ""), upload_match.group(1)
-    ):
-        return await call_next(request)
     if request.url.path.startswith("/api/") and request.url.path != "/api/integrations/obp/webhook":
         expected = os.getenv("FIN_SENTINELS_BACKEND_API_KEY", "")
         provided = request.headers.get("x-fin-sentinels-backend-key", "")
@@ -176,27 +140,6 @@ async def require_authenticated_frontend_proxy(request: Request, call_next):
         if not hmac.compare_digest(expected, provided):
             return JSONResponse({"detail": "Authentication required."}, status_code=401)
     return await call_next(request)
-
-
-def _cors_origins() -> list[str]:
-    values = [
-        item.strip().rstrip("/")
-        for item in os.getenv("FIN_SENTINELS_ALLOWED_ORIGINS", "").split(",")
-        if item.strip()
-    ]
-    frontend = os.getenv("FIN_SENTINELS_FRONTEND_URL", "http://127.0.0.1:3000/").strip().rstrip("/")
-    if frontend:
-        values.append(frontend)
-    return list(dict.fromkeys(values))
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins(),
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Fin-Sentinels-Upload-Token"],
-    allow_credentials=False,
-)
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -304,24 +247,49 @@ class EvidenceCreate(BaseModel):
     )
 
     description: str = Field(
-        min_length=1,
+        default="",
         max_length=5000,
     )
 
-    @field_validator(
-        "evidence_type",
-        "description",
+    transaction_ids: list[str] = Field(
+        default_factory=list,
+        max_length=100,
     )
+
+    @field_validator("evidence_type")
     @classmethod
-    def trim_text(cls, value: str) -> str:
+    def trim_evidence_type(cls, value: str) -> str:
         value = value.strip()
-
         if not value:
-            raise ValueError(
-                "Value cannot be empty"
-            )
-
+            raise ValueError("Evidence type cannot be empty")
         return value
+
+    @field_validator("description")
+    @classmethod
+    def trim_description(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("transaction_ids")
+    @classmethod
+    def normalize_transaction_ids(cls, values: list[str]) -> list[str]:
+        normalized = []
+        seen = set()
+        for value in values:
+            transaction_id = value.strip()
+            if not transaction_id:
+                continue
+            if len(transaction_id) > 120:
+                raise ValueError("Transaction IDs must be at most 120 characters")
+            if transaction_id not in seen:
+                normalized.append(transaction_id)
+                seen.add(transaction_id)
+        return normalized
+
+    @model_validator(mode="after")
+    def require_description_or_transaction(self):
+        if not self.description and not self.transaction_ids:
+            raise ValueError("Add evidence details or at least one transaction ID")
+        return self
 
 
 class SettingsUpdate(BaseModel):
@@ -466,8 +434,6 @@ def read_json_file(
 ) -> Any:
     """
     Read runtime state first, then fall back to bundled seed data.
-
-    The configured runtime directory takes precedence over bundled seed data.
     """
 
     if filename in IN_MEMORY_STORAGE:
@@ -513,12 +479,8 @@ def write_json_file(
     data: Any,
 ) -> None:
     """
-    Save runtime state.
-
-    Memory is always updated even when filesystem persistence is unavailable.
+    Atomically save runtime state and fail loudly if durable storage is down.
     """
-
-    IN_MEMORY_STORAGE[filename] = data
 
     target = (
         RUNTIME_DATA_DIR / filename
@@ -551,13 +513,15 @@ def write_json_file(
                 target,
             )
 
-    except (
-        OSError,
-        PermissionError,
-    ):
-        # The in-memory copy is still available
-        # for the current serverless instance.
-        pass
+    except OSError as exc:
+        # A failed write must not look successful or remain visible from the
+        # process cache after the caller receives an error.
+        IN_MEMORY_STORAGE.pop(filename, None)
+        raise RuntimeError(
+            "Persistent application storage is unavailable; no changes were saved."
+        ) from exc
+
+    IN_MEMORY_STORAGE[filename] = data
 
 
 def get_settings() -> dict[str, Any]:
@@ -1022,6 +986,12 @@ def app_js():
 @app.get("/api/health")
 def health():
     try:
+        runtime_storage_writable = os.access(RUNTIME_DATA_DIR, os.W_OK)
+        if not runtime_storage_writable:
+            raise HTTPException(
+                status_code=503,
+                detail="Persistent application storage is not writable.",
+            )
         G = load_graph_data()
         transactions = load_transactions()
 
@@ -1035,8 +1005,11 @@ def health():
             "data_file": os.path.basename(
                 find_data_file()
             ),
+            "runtime_storage_writable": runtime_storage_writable,
         }
 
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -2195,6 +2168,25 @@ def add_evidence(
     evidence: EvidenceCreate,
 ):
     try:
+        if evidence.transaction_ids:
+            known_transaction_ids = {
+                str(tx.get("transaction_id", ""))
+                for tx in load_transactions()
+            }
+            unknown_transaction_ids = [
+                transaction_id
+                for transaction_id in evidence.transaction_ids
+                if transaction_id not in known_transaction_ids
+            ]
+            if unknown_transaction_ids:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Unknown transaction IDs: "
+                        + ", ".join(unknown_transaction_ids[:10])
+                    ),
+                )
+
         cases = load_cases()
 
         target_id = case_id.strip()
@@ -2227,6 +2219,7 @@ def add_evidence(
                 "description": (
                     evidence.description
                 ),
+                "transaction_ids": evidence.transaction_ids,
                 "timestamp": utc_now(),
             }
 
@@ -2238,6 +2231,11 @@ def add_evidence(
                 (
                     f"{evidence.evidence_type}: "
                     f"{evidence.description}"
+                    + (
+                        f" · Transactions: {', '.join(evidence.transaction_ids)}"
+                        if evidence.transaction_ids
+                        else ""
+                    )
                 ),
                 "EVIDENCE",
             )
@@ -2714,9 +2712,8 @@ def update_settings(
 @app.on_event("startup")
 async def startup():
     """
-    Do not create/write bundled data files on startup.
-
-    Runtime data is initialized separately from packaged seed data.
+    Do not create or write bundled seed data on startup. Runtime state is
+    kept in the configured data directory, which should be a persistent volume.
     """
 
     global GNN_ENGINE, GNN_TRANSACTIONS

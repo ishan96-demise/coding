@@ -51,8 +51,6 @@ button, input { font: inherit; }
 .mono-metric { font-variant-numeric: tabular-nums; letter-spacing: .015em; }
 .border-beam i { position: absolute; top: -50%; left: -30%; width: 42%; height: 200%; transform: rotate(24deg); background: linear-gradient(90deg, transparent, rgba(117,230,220,.18), transparent); animation: beam-sweep 8s linear infinite; }
 @keyframes beam-sweep { from { left: -35%; } to { left: 120%; } }
-.panel-resize { resize: both; overflow: auto; min-width: 300px; min-height: 220px; }
-.panel-resize::-webkit-resizer { background: linear-gradient(135deg, transparent 48%, rgba(117,230,220,.5) 50%, transparent 57%); }
 .ticker-marquee { animation: ticker 45s linear infinite; }
 .ticker-marquee:hover { animation-play-state: paused; }
 @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }

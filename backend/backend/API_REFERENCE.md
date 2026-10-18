@@ -135,7 +135,17 @@ Allowed statuses:
 
 `POST /api/cases/{case_id}/evidence`
 
-Adds evidence and automatically appends a timeline event.
+Adds analyst evidence and automatically appends a timeline event. The request may include `transaction_ids` (up to 100); every referenced ID must already exist in the loaded transaction records. IDs are stored as structured references instead of being embedded in the description.
+
+```json
+{
+  "evidence_type": "Transaction review",
+  "description": "Rapid pass-through observed across the account.",
+  "transaction_ids": ["replace-with-an-existing-transaction-id"]
+}
+```
+
+Replace the example ID with a value from `GET /api/transactions/recent`. Provide a non-empty description, at least one known transaction ID, or both.
 
 ## Profile / settings
 

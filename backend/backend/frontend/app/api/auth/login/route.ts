@@ -12,7 +12,10 @@ function secureEquals(actual: string, expected: string) {
 
 export async function POST(request: NextRequest) {
   if (!isLocalAuthConfigured()) {
-    return NextResponse.json({ detail: "Sign-in is temporarily unavailable. Contact your workspace administrator." }, { status: 503 });
+    const detail = process.env.NODE_ENV === "development"
+      ? "Local sign-in settings are not available to this server. Run restart-local.ps1 from the frontend folder; for first-time setup, run setup-local-login.ps1 first."
+      : "Sign-in is temporarily unavailable. Contact your workspace administrator.";
+    return NextResponse.json({ detail }, { status: 503 });
   }
 
   let body: { username?: unknown; password?: unknown };

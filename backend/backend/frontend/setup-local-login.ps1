@@ -52,4 +52,4 @@ if (-not ($backendLines | Where-Object { $_ -match '^\s*FIN_SENTINELS_FRONTEND_U
 }
 Set-Content -LiteralPath $backendEnvPath -Value $backendLines -Encoding utf8
 
-Write-Host "Local analyst login and the private Next.js-to-FastAPI key are configured. Restart FastAPI and Next.js to activate the changes."
+Write-Host "Local analyst login and the private Next.js-to-FastAPI key are configured. Restart FastAPI, then run .\restart-local.ps1 from frontend to load the saved settings."

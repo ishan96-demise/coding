@@ -16,7 +16,7 @@ type InvestigationCase = {
 };
 
 type CreateCaseResponse = InvestigationCase & { success?: boolean; existing?: boolean; message?: string };
-type EvidenceRecord = { evidence_id: string; evidence_type?: string; description?: string; timestamp?: string; file_name?: string; file_url?: string; file_size?: number };
+type EvidenceRecord = { evidence_id: string; evidence_type?: string; description?: string; transaction_ids?: string[]; timestamp?: string; file_name?: string; file_url?: string; file_size?: number };
 type DetailedCase = InvestigationCase & { evidence?: EvidenceRecord[]; timeline?: { title?: string; description?: string; timestamp?: string }[] };
 
 export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account: string) => void; selectedAccount: string }) {
@@ -121,11 +121,10 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
 
     try {
       if (hasTextEvidence && !textEvidenceSaved) {
-        const description = [evidenceDescription.trim(), normalizedIds.length ? `Transaction IDs: ${normalizedIds.join(", ")}` : ""].filter(Boolean).join("\n");
         const response = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ evidence_type: evidenceType.trim(), description }),
+          body: JSON.stringify({ evidence_type: evidenceType.trim(), description: evidenceDescription.trim(), transaction_ids: normalizedIds }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(typeof payload.detail === "string" ? payload.detail : `Evidence attachment failed (${response.status})`);
@@ -139,21 +138,7 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
         upload.append("file", evidenceFile, evidenceFile.name);
         upload.append("evidence_type", evidenceType.trim());
         upload.append("description", evidenceDescription.trim());
-        let response: Response;
-        if (process.env.NEXT_PUBLIC_FIN_DIRECT_UPLOAD === "true") {
-          const grantResponse = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence/upload-token`), { method: "POST", cache: "no-store" });
-          const grant = await grantResponse.json().catch(() => ({}));
-          if (!grantResponse.ok || typeof grant.token !== "string" || typeof grant.upload_url !== "string") {
-            throw new Error(`${evidenceFile.name}: ${typeof grant.detail === "string" ? grant.detail : "upload authorization failed"}`);
-          }
-          response = await fetch(grant.upload_url, {
-            method: "POST",
-            headers: { "x-fin-sentinels-upload-token": grant.token },
-            body: upload,
-          });
-        } else {
-          response = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence/upload`), { method: "POST", body: upload });
-        }
+        const response = await fetch(apiUrl(`/api/cases/${encodeURIComponent(createdCase.case_id)}/evidence/upload`), { method: "POST", body: upload });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(`${evidenceFile.name}: ${typeof payload.detail === "string" ? payload.detail : `upload failed (${response.status})`}`);
         completedFiles.add(fileKey);
@@ -261,7 +246,7 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
             {detailLoading && <div className="flex items-center gap-2 py-5 text-[9px] text-slate-500"><RefreshCw size={12} className="animate-spin"/>Loading evidence and timeline…</div>}
             {detailError && <div role="alert" className="py-3 text-[9px] text-rose-200">{detailError}</div>}
             {!detailLoading && !detailError && !selectedCase.evidence?.length && <div className="rounded-md border border-white/[.06] px-3 py-4 text-[9px] text-slate-600">No evidence records are attached to this case yet.</div>}
-            <ul className="space-y-2">{selectedCase.evidence?.map((record) => <li key={record.evidence_id} className="rounded-md border border-white/[.07] bg-black/15 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[9px] font-semibold text-cyan-100/80">{record.evidence_type || "Evidence"} <span className="ml-1 font-mono text-[7px] text-slate-600">{record.evidence_id}</span></span>{record.timestamp && <time className="font-mono text-[7px] text-slate-600">{record.timestamp}</time>}</div>{record.description && <p className="mt-2 whitespace-pre-wrap break-words text-[9px] leading-relaxed text-slate-400">{record.description}</p>}{record.file_url && <a href={apiUrl(record.file_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 rounded border border-cyan-300/15 px-2 py-1.5 text-[8px] text-cyan-100 hover:bg-cyan-300/[.05]"><Paperclip size={10}/>{record.file_name || "Download evidence"}{record.file_size !== undefined && <span className="text-slate-600">· {(record.file_size / (1024 * 1024)).toFixed(1)} MB</span>}</a>}</li>)}</ul>
+            <ul className="space-y-2">{selectedCase.evidence?.map((record) => <li key={record.evidence_id} className="rounded-md border border-white/[.07] bg-black/15 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[9px] font-semibold text-cyan-100/80">{record.evidence_type || "Evidence"} <span className="ml-1 font-mono text-[7px] text-slate-600">{record.evidence_id}</span></span>{record.timestamp && <time className="font-mono text-[7px] text-slate-600">{record.timestamp}</time>}</div>{record.description && <p className="mt-2 whitespace-pre-wrap break-words text-[9px] leading-relaxed text-slate-400">{record.description}</p>}{record.transaction_ids?.length ? <div className="mt-2 border-t border-white/[.05] pt-2"><div className="mb-1 text-[7px] font-bold tracking-wider text-slate-600">VERIFIED TRANSACTION REFERENCES</div><div className="flex flex-wrap gap-1">{record.transaction_ids.map((id) => <code key={id} className="rounded border border-cyan-200/10 bg-cyan-200/[.04] px-1.5 py-1 font-mono text-[8px] text-cyan-100/80">{id}</code>)}</div></div> : null}{record.file_url && <a href={apiUrl(record.file_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 rounded border border-cyan-300/15 px-2 py-1.5 text-[8px] text-cyan-100 hover:bg-cyan-300/[.05]"><Paperclip size={10}/>{record.file_name || "Download evidence"}{record.file_size !== undefined && <span className="text-slate-600">· {(record.file_size / (1024 * 1024)).toFixed(1)} MB</span>}</a>}</li>)}</ul>
           </div>
           {selectedCase.timeline?.length ? (
             <div>

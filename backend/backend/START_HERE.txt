@@ -1,23 +1,17 @@
 FINSENTINELS — LOCAL START
 =========================
 
-The analyst workspace uses the secured Next.js interface. The old static demo
-login has been retired; there is no shared demo access code.
+To start the local app, double-click run.bat in this folder. It starts or
+reuses the FastAPI backend, starts the secured Next.js workspace, waits for the
+login page, and opens it in your browser at http://127.0.0.1:3000/login.
 
-1. Start FastAPI in one PowerShell window from this project directory:
-   .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+Keep the API and frontend terminal windows open while using FinSentinels. Close
+those windows when you are done.
 
-2. Start Next.js in a second window:
-   cd frontend
-   pnpm dev
+For first-time setup only, if frontend/.env.local does not exist, run
+frontend/setup-local-login.ps1 and choose your analyst username and password.
+Do not rerun setup unless you intend to replace those credentials. Keep
+frontend/.env.local and backend.local.env private; do not commit them.
 
-3. Open the URL printed by Next.js (normally http://127.0.0.1:3000/).
-
-Local analyst login:
-   Username: analyst
-   Password: see frontend/.env.local created for this workspace
-
-Do not commit frontend/.env.local or reuse this local password in production.
-
-The bundled 99-account graph is a synthetic workspace dataset. The OBP bank
-connector is available after an authorized provider connection is configured.
+The bundled 99-account graph is synthetic demo data. The OBP bank connector is
+available after an authorized provider connection is configured.

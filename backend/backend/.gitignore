@@ -1,23 +1,12 @@
-# Python runtime and generated files
 .venv/
-**/.venv/
 __pycache__/
-*.py[cod]
+*.pyc
 *.log
-.pytest_cache/
-
-# Local configuration and credentials
+*.bak
 .env
-.env.*
-!.env.example
-!.env.*.example
 backend.local.env
-
-# Frontend dependencies and generated output
-node_modules/
-.next/
-out/
-coverage/
-*.tsbuildinfo
+runtime-data/
+*.sqlite3
+.pytest_cache/
 playwright-report/
 test-results/

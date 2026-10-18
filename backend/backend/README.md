@@ -66,14 +66,39 @@ pnpm install
 if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
 # First run only: creates a local analyst account and shared API key.
 .\setup-local-login.ps1
-pnpm dev
+.\restart-local.ps1
 ```
 
 The setup script prompts for the username and password; it does not install a
 default login. Do not rerun it unless you intend to replace the saved local
-credentials. On later starts, run only `pnpm dev` from `frontend/`.
+credentials. On later starts, run `.\restart-local.ps1` from `frontend/`. It
+loads settings from `.env.local`, clears inherited FinSentinels environment
+overrides for the frontend process, and replaces a stale local Next.js server
+on the selected port when that process belongs to this checkout. If another
+application owns the port, the script stops and reports it instead of
+terminating the unrelated process.
 
 Open the URL printed by `pnpm dev` (normally `http://127.0.0.1:3000/`). If Next.js selects another port because 3000 is occupied, use the printed port; set `FIN_SENTINELS_FRONTEND_URL` in the backend environment to that URL if you want the FastAPI root to redirect there. For a production frontend build, run `pnpm build` in `frontend/`, then `pnpm start` after the API is available.
+
+## Deploy a private single-host pilot with Docker
+
+The supported hosted path is a single Linux host running Docker Compose. It runs the Next.js terminal and FastAPI as separate containers, keeps the API on the private Compose network, and stores cases, settings, evidence files, and ingested transactions in the persistent `runtime-data` volume.
+
+On Windows PowerShell, from this directory:
+
+```powershell
+.\setup-deploy-env.ps1
+docker compose up --build -d
+docker compose ps
+```
+
+Open `http://localhost:3000`. The setup script asks for an analyst username/password and generates independent session and backend API secrets; it does not install a shared default login. Keep the generated `.env` private. To stop the services without deleting investigation data, use `docker compose down`. **Do not use `docker compose down -v` unless you intend to erase the persistent data volume.**
+
+For an internet-facing deployment, put a maintained TLS reverse proxy in front of the web container, point `PUBLIC_APP_URL` at the HTTPS hostname, and set `FIN_SENTINELS_COOKIE_SECURE=true`. Keep the API port private; the compose file does not publish it. Configure backups for the Docker `runtime-data` volume and test restores before storing operational evidence.
+
+This is a **single-analyst, single-host pilot**. The JSON-backed runtime store is designed for one API worker and one host; do not scale it to multiple API replicas. The login is one shared environment-configured analyst account, so use individual identity, role-based authorization, a transactional database, and an audit trail before onboarding a real analyst team or handling regulated production records. A real OBP feed also requires bank-issued OAuth access and correctly signed webhook delivery. Until that is configured, the included synthetic dataset remains visible and must be treated as demo data.
+
+The API container installs PyTorch's official CPU-only wheel because it does not use GPU acceleration; this avoids CUDA runtime packages. The container is still larger than the web image because it includes the GNN runtime. End users access the site through their browser and do not download the Python environment. If the GNN cannot initialize, the API intentionally remains available with graph-rule scoring and reports that the model is unavailable.
 
 ### Live source feed
 
@@ -104,12 +129,9 @@ The packaged dataset contains:
 
 ### Windows
 
-```powershell
-cd E:\coding\backend\backend
-.\run.bat
-```
+Double-click `run.bat` from this project folder, or run `.\run.bat` in PowerShell. It starts or reuses the local FastAPI service, starts the secured Next.js frontend with the saved local settings, waits for the login page, then opens it in your browser. Keep the API and frontend windows open while using the app.
 
-The launcher creates a local virtual environment, installs requirements, runs verification, then starts Uvicorn.
+For first-time setup only, if local sign-in has not been configured, run `frontend/setup-local-login.ps1` and choose a username and password. Do not rerun it unless you want to replace the saved credentials. The launcher does not install packages automatically; install backend requirements and run `pnpm install` in `frontend/` if the local environments have not been set up yet.
 
 ### Manual
 
@@ -123,7 +145,7 @@ Start the Next.js frontend as described above and open the URL printed by `pnpm 
 
 ## Local analyst login
 
-There is no built-in demo password. Run `frontend/setup-local-login.ps1` to configure analyst credentials plus a private Next.js-to-FastAPI key. It writes secrets only to ignored `frontend/.env.local` and `backend.local.env`. Restart both servers after setup. FastAPI rejects direct `/api/*` requests without the private proxy key; the signed OBP webhook is verified separately. For a throwaway local install, use a unique password and do not reuse production credentials.
+There is no built-in demo password. Run `frontend/setup-local-login.ps1` to configure analyst credentials plus a private Next.js-to-FastAPI key. It writes secrets only to ignored `frontend/.env.local` and `backend.local.env`. Restart FastAPI after setup, then run `frontend/restart-local.ps1` so Next.js loads the saved settings. If the login page says local sign-in settings are unavailable, use that restart script rather than rerunning setup; rerunning setup replaces the saved password. FastAPI rejects direct `/api/*` requests without the private proxy key; the signed OBP webhook is verified separately. For a throwaway local install, use a unique password and do not reuse production credentials.
 
 ## GNN integration
 
@@ -135,13 +157,13 @@ The account-level signal combines `80% graph-rule score + 20% GNN anomaly score`
 
 Near-real-time monitoring uses the push-based transaction feed and `GET /api/stream/intelligence` SSE endpoint. The OBP adapter is implemented but no provider account is currently connected. The streamed explainable agent widgets are deterministic, graph-grounded Pydantic outputs. No external LLM, LangGraph/Instructor agent runtime, news provider, SEC RAG index, or vector database is configured in this repository.
 
-## Security and validation
+## Security and production boundary
 
 - Pydantic request validation
 - Account ID normalization
 - Account-only case creation
 - Controlled FastAPI errors
-- Local data-file isolation under `data/`
+- Runtime data isolated in a configurable data directory; writes fail visibly if persistent storage is unavailable
 - No raw SQL surface in the MVP
 
-Production hardening would add authentication, RBAC, secrets management, audit logging, encryption and persistent transactional storage.
+The hosted pilot uses a signed HTTP-only session cookie and a private Next.js-to-FastAPI API key. This does not provide individual analyst accounts, RBAC, centralized audit logging, or a multi-tenant boundary. Those controls, a transactional database, managed secret rotation, encrypted backups, and independent security review are required before a financial institution uses it operationally.

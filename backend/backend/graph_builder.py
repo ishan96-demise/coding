@@ -12,10 +12,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MOCK_FILE = os.path.join(DATA_DIR, "mock_transactions.json")
 NORMAL_FILE = os.path.join(DATA_DIR, "normal_transactions.json")
 LIVE_FILE = os.path.join(
-    os.environ.get(
-        "FINSENTINELS_RUNTIME_DIR",
-        DATA_DIR,
-    ),
+    os.environ.get("FINSENTINELS_RUNTIME_DIR", DATA_DIR),
     "live_transactions.json",
 )
 
