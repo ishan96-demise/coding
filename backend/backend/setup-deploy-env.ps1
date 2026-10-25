@@ -39,6 +39,7 @@ $lines = @(
     "FIN_SENTINELS_PASSWORD=$(ConvertTo-ComposeSingleQuoted $password)"
     "FIN_SENTINELS_SESSION_SECRET=$(New-Secret)"
     "FIN_SENTINELS_BACKEND_API_KEY=$(New-Secret)"
+    "FINSENTINELS_DATA_MODE=production"
     ""
     "WEB_BIND_ADDRESS=127.0.0.1"
     "WEB_PORT=3000"

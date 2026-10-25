@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Fin Sentinels | Network Intelligence Terminal",
-  description: "Explainable financial fraud network intelligence command center.",
+  title: "Fin Sentinels | Financial activity in context",
+  description: "A clear workspace for reviewing transaction activity and connected account signals.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

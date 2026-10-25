@@ -7,6 +7,7 @@ services:
     environment:
       FIN_SENTINELS_BACKEND_API_KEY: ${FIN_SENTINELS_BACKEND_API_KEY:?Run setup-deploy-env.ps1 first}
       FIN_SENTINELS_FRONTEND_URL: ${PUBLIC_APP_URL:-http://localhost:3000/}
+      FINSENTINELS_DATA_MODE: ${FINSENTINELS_DATA_MODE:-production}
       FINSENTINELS_RUNTIME_DIR: /var/lib/finsentinels
       OBP_API_BASE_URL: ${OBP_API_BASE_URL:-https://apisandbox.openbankproject.com}
       OBP_API_VERSION: ${OBP_API_VERSION:-v5.1.0}

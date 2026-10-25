@@ -14,6 +14,12 @@ async function proxy(request: NextRequest, context: RouteContext) {
   request.headers.forEach((value, key) => {
     if (!["host", "connection", "content-length", "cookie", "accept-encoding", "transfer-encoding"].includes(key.toLowerCase())) headers.set(key, value);
   });
+  headers.set("x-forwarded-host", incoming.host);
+  headers.set("x-forwarded-proto", incoming.protocol.replace(":", ""));
+  if (path[0] === "portal") {
+    const customerSession = request.cookies.get("fin_customer_session")?.value;
+    if (customerSession) headers.set("cookie", `fin_customer_session=${customerSession}`);
+  }
   const backendKey = process.env.FIN_SENTINELS_BACKEND_API_KEY?.trim();
   if (backendKey) headers.set("x-fin-sentinels-backend-key", backendKey);
 

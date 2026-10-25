@@ -638,46 +638,28 @@ class GNNRiskEngine:
             + identity
         )
 
-        for epoch in range(
-            max(
-                1,
-                self.epochs,
-            )
-        ):
+        previous_threads = torch.get_num_threads()
+        # The reference graph is small. Large BLAS thread pools add more
+        # scheduling overhead than useful parallel work for these matrices.
+        if features.device.type == "cpu" and previous_threads > 2:
+            torch.set_num_threads(2)
+        try:
+            for _epoch in range(max(1, self.epochs)):
+                self.model.train()
+                optimizer.zero_grad()
+                embeddings = self.model(features, adjacency)
+                similarity = embeddings @ embeddings.T
+                loss = F.mse_loss(similarity, target_similarity)
+                loss.backward()
+                optimizer.step()
 
-            self.model.train()
-
-            optimizer.zero_grad()
-
-            embeddings = self.model(
-                features,
-                adjacency,
-            )
-
-            similarity = (
-                embeddings
-                @ embeddings.T
-            )
-
-            loss = F.mse_loss(
-                similarity,
-                target_similarity,
-            )
-
-            loss.backward()
-
-            optimizer.step()
-
-        self.model.eval()
-
-        with torch.no_grad():
-
-            embeddings = self.model(
-                features,
-                adjacency,
-            )
-
-        return embeddings
+            self.model.eval()
+            with torch.no_grad():
+                embeddings = self.model(features, adjacency)
+            return embeddings
+        finally:
+            if torch.get_num_threads() != previous_threads:
+                torch.set_num_threads(previous_threads)
 
     # ============================================================
     # FIT

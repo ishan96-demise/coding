@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { AlertTriangle, ArrowUpRight, BriefcaseBusiness, Check, ChevronUp, FileText, LoaderCircle, Paperclip, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, BriefcaseBusiness, Check, ChevronUp, FileText, LoaderCircle, Paperclip, Plus, RefreshCw, Search, X } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 
 type InvestigationCase = {
@@ -40,6 +40,10 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
   const [selectedCase, setSelectedCase] = useState<DetailedCase | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [queueSearch, setQueueSearch] = useState("");
+  const [queueFilter, setQueueFilter] = useState<"ALL" | "ACTIVE" | "CLOSED" | "DISMISSED">("ALL");
+  const [savingCaseId, setSavingCaseId] = useState("");
+  const [queueActionError, setQueueActionError] = useState("");
 
   const loadCases = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(apiUrl("/api/cases"), { signal, cache: "no-store" });
@@ -65,6 +69,39 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
 
   const active = cases.filter((item) => !["CLOSED", "DISMISSED"].includes((item.status || "").toUpperCase())).length;
   const high = cases.filter((item) => (item.risk_status || "").toUpperCase() === "HIGH RISK").length;
+  const normalizedSearch = queueSearch.trim().toLowerCase();
+  const visibleCases = cases.filter((item) => {
+    const status = (item.status || "OPEN").toUpperCase();
+    const matchesFilter = queueFilter === "ALL"
+      || (queueFilter === "ACTIVE" && !["CLOSED", "DISMISSED"].includes(status))
+      || status === queueFilter;
+    const searchable = [item.case_id, item.account_id, item.priority, item.status, item.risk_status, item.note]
+      .filter(Boolean).join(" ").toLowerCase();
+    return matchesFilter && (!normalizedSearch || searchable.includes(normalizedSearch));
+  });
+
+  const updateCase = async (item: InvestigationCase, field: "status" | "priority", value: string) => {
+    setSavingCaseId(item.case_id);
+    setQueueActionError("");
+    try {
+      const response = await fetch(apiUrl(`/api/cases/${encodeURIComponent(item.case_id)}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload.detail === "string" ? payload.detail : `Case update failed (${response.status})`);
+      const updated = payload as DetailedCase;
+      setCases((current) => current.map((entry) => entry.case_id === item.case_id ? updated : entry));
+      setSelectedCase((current) => current?.case_id === item.case_id ? updated : current);
+      setNotice(`${item.case_id} ${field} updated.`);
+    } catch (reason) {
+      setQueueActionError(reason instanceof Error ? reason.message : "Unable to update the case.");
+      await loadCases().catch(() => undefined);
+    } finally {
+      setSavingCaseId("");
+    }
+  };
 
   const openCaseDetails = async (item: InvestigationCase) => {
     setSelectedCase(item);
@@ -213,28 +250,53 @@ export function CaseQueue({ onAnalyze, selectedAccount }: { onAnalyze: (account:
         <div className="flex items-center gap-2.5"><BriefcaseBusiness size={15} className="text-cyan-200"/><div><div className="text-[10px] font-bold tracking-[.14em] text-slate-300">INVESTIGATION CASE QUEUE</div><div className="mt-1 text-[9px] text-slate-600">Current risk is recalculated from the linked transaction graph.</div></div></div>
         <div className="flex items-center gap-2"><Summary label="ACTIVE" value={active}/><Summary label="HIGH RISK" value={high} tone="text-rose-300"/><button type="button" aria-label="Refresh cases" onClick={() => { setLoading(true); loadCases().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Case queue unavailable")).finally(() => setLoading(false)); }} className="grid h-8 w-8 place-items-center rounded border border-white/[.08] text-slate-500 transition hover:bg-white/[.04] hover:text-cyan-100"><RefreshCw size={12}/></button></div>
       </div>
-      <div className="overflow-x-auto"><div className="min-w-[920px]">
-        <div className="grid grid-cols-[100px_100px_90px_90px_minmax(0,1fr)_70px_140px] gap-3 border-b border-white/[.04] px-4 py-2 text-[8px] font-bold tracking-[.12em] text-slate-700"><span>CASE</span><span>ACCOUNT</span><span>PRIORITY</span><span>STATUS</span><span>RISK / NOTE</span><span className="text-right">SCORE</span><span className="text-right">ACTIONS</span></div>
+      <div className="divide-y divide-white/[.05] xl:hidden">
+        {loading && <div className="flex h-40 items-center justify-center gap-2 text-[10px] text-slate-500"><RefreshCw size={12} className="animate-spin"/>Loading cases…</div>}
+        {!loading && error && <div className="flex h-40 items-center justify-center gap-2 text-[10px] text-rose-300"><AlertTriangle size={13}/>{error}</div>}
+        {!loading && !error && cases.length === 0 && <div className="grid h-40 place-items-center text-[10px] text-slate-600">No cases are currently recorded by the API.</div>}
+        {!loading && !error && cases.length > 0 && visibleCases.length === 0 && <div className="grid h-32 place-items-center text-[10px] text-slate-600">No cases match these filters.</div>}
+        {!loading && !error && visibleCases.map((item) => {
+          const isHigh = (item.risk_status || "").toUpperCase() === "HIGH RISK";
+          return <article key={`compact-${item.case_id}`} className="space-y-3 p-3.5">
+            <div className="flex items-start justify-between gap-3"><div><div className="font-mono text-[8px] tracking-wider text-slate-600">{item.case_id} · {(item.status || "OPEN").replaceAll("_", " ")}</div><button type="button" onClick={() => onAnalyze(item.account_id)} className="mt-1 font-mono text-[11px] text-cyan-100/85 hover:text-cyan-50">{item.account_id}<ArrowUpRight size={10} className="ml-1 inline text-slate-600"/></button></div><div className="text-right"><div className={`font-mono text-[15px] ${isHigh ? "text-rose-300" : "text-slate-300"}`}>{item.risk_score ?? "—"}<span className="ml-1 text-[8px] text-slate-600">/100</span></div><div className={`mt-0.5 text-[7px] font-bold tracking-wider ${isHigh ? "text-rose-300" : "text-slate-500"}`}>{item.risk_status || "UNSCORED"}</div></div></div>
+            <p className="line-clamp-2 text-[9px] leading-relaxed text-slate-500">{item.note || "No analyst note"}</p>
+            <div className="grid grid-cols-2 gap-2"><label className="space-y-1 text-[7px] font-bold tracking-wider text-slate-600">PRIORITY<select aria-label={`Priority for ${item.case_id}`} value={item.priority || "MEDIUM"} disabled={savingCaseId === item.case_id} onChange={(event) => void updateCase(item, "priority", event.target.value)} className="h-8 w-full rounded border border-white/[.08] bg-[#080c13] px-2 text-[9px] text-slate-300 outline-none focus:border-cyan-300/30 disabled:opacity-50"><option value="CRITICAL">CRITICAL</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option></select></label><label className="space-y-1 text-[7px] font-bold tracking-wider text-slate-600">WORKFLOW STATUS<select aria-label={`Workflow status for ${item.case_id}`} value={(item.status || "OPEN").toUpperCase()} disabled={savingCaseId === item.case_id} onChange={(event) => void updateCase(item, "status", event.target.value)} className="h-8 w-full rounded border border-white/[.08] bg-[#080c13] px-2 text-[9px] text-slate-300 outline-none focus:border-cyan-300/30 disabled:opacity-50"><option value="OPEN">OPEN</option><option value="INVESTIGATING">INVESTIGATING</option><option value="CLOSED">CLOSED</option><option value="DISMISSED">DISMISSED</option></select></label></div>
+            <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => openCaseDetails(item)} className="inline-flex h-8 items-center gap-1.5 rounded border border-white/[.08] px-2.5 text-[8px] font-semibold text-slate-400 hover:border-cyan-300/20 hover:text-cyan-100"><FileText size={11}/>CASE DETAILS</button><button type="button" onClick={() => onAnalyze(item.account_id)} className="inline-flex h-8 items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[.05] px-2.5 text-[8px] font-semibold text-cyan-100/80 hover:bg-cyan-300/[.1]">OPEN NETWORK<ArrowUpRight size={11}/></button></div>
+          </article>;
+        })}
+      </div>
+      <div className="hidden overflow-x-auto xl:block"><div className="min-w-[960px]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/[.05] px-4 py-3">
+          <label className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-md border border-white/[.08] bg-black/15 px-2.5 text-slate-500 focus-within:border-cyan-300/30">
+            <Search size={12}/><input value={queueSearch} onChange={(event) => setQueueSearch(event.target.value)} placeholder="Search case, account, note, or risk…" className="min-w-0 flex-1 bg-transparent text-[9px] text-slate-200 outline-none placeholder:text-slate-700" aria-label="Search cases" />
+          </label>
+          <div className="flex items-center gap-1 rounded-md border border-white/[.06] p-1" role="group" aria-label="Filter cases by status">
+            {(["ALL", "ACTIVE", "CLOSED", "DISMISSED"] as const).map((filter) => <button key={filter} type="button" aria-pressed={queueFilter === filter} onClick={() => setQueueFilter(filter)} className={`h-6 rounded px-2 text-[7px] font-semibold tracking-wider transition ${queueFilter === filter ? "bg-cyan-200/10 text-cyan-100" : "text-slate-600 hover:text-slate-300"}`}>{filter}</button>)}
+          </div>
+          <span className="ml-auto font-mono text-[8px] text-slate-600">{visibleCases.length} / {cases.length} CASES</span>
+        </div>
+        {queueActionError && <div role="alert" className="border-b border-rose-300/10 bg-rose-300/[.035] px-4 py-2 text-[9px] text-rose-200">{queueActionError}</div>}
+        <div className="grid grid-cols-[100px_110px_120px_140px_minmax(200px,1fr)_70px_140px] gap-3 border-b border-white/[.04] px-4 py-2 text-[8px] font-bold tracking-[.12em] text-slate-700"><span>CASE</span><span>ACCOUNT</span><span>PRIORITY</span><span>WORKFLOW</span><span>RISK / NOTE</span><span className="text-right">SCORE</span><span className="text-right">ACTIONS</span></div>
         <div className="terminal-scroll max-h-[calc(100dvh-300px)] min-h-[260px] overflow-auto">
           {loading && <div className="flex h-48 items-center justify-center gap-2 text-[10px] text-slate-500"><RefreshCw size={12} className="animate-spin"/>Loading current cases and network scores…</div>}
           {!loading && error && <div className="flex h-48 items-center justify-center gap-2 text-[10px] text-rose-300"><AlertTriangle size={13}/>{error}</div>}
           {!loading && !error && cases.length === 0 && <div className="grid h-48 place-items-center text-[10px] text-slate-600">No cases are currently recorded by the API.</div>}
-          {!loading && !error && cases.map((item) => {
+          {!loading && !error && cases.length > 0 && visibleCases.length === 0 && <div className="grid h-40 place-items-center text-[10px] text-slate-600">No cases match these filters.</div>}
+          {!loading && !error && visibleCases.map((item) => {
             const isHigh = (item.risk_status || "").toUpperCase() === "HIGH RISK";
-            return <div key={item.case_id} className="grid grid-cols-[100px_100px_90px_90px_minmax(0,1fr)_70px_140px] items-center gap-3 border-b border-white/[.035] px-4 py-2.5 hover:bg-white/[.02]">
-              <button type="button" onClick={() => onAnalyze(item.account_id)} className="col-span-6 grid min-w-0 grid-cols-[100px_100px_90px_90px_minmax(0,1fr)_70px] items-center gap-3 text-left">
-                <span className="font-mono text-[9px] text-slate-400">{item.case_id}</span><span className="font-mono text-[10px] text-cyan-100/80">{item.account_id}<ArrowUpRight size={10} className="ml-1 inline text-slate-700"/></span>
-                <span className={`text-[8px] font-bold tracking-wider ${item.priority === "HIGH" ? "text-rose-300" : "text-amber-200"}`}>{item.priority || "NORMAL"}</span>
-                <span className="text-[8px] text-slate-500">{(item.status || "OPEN").replaceAll("_", " ")}</span>
-                <span className="min-w-0"><span className={`mr-2 text-[8px] font-semibold ${isHigh ? "text-rose-300" : "text-slate-400"}`}>{item.risk_status || "UNSCORED"}</span><span className="block truncate pt-1 text-[9px] text-slate-600">{item.note || "No analyst note"}</span></span>
-                <span className={`text-right font-mono text-[11px] ${isHigh ? "text-rose-300" : "text-slate-300"}`}>{item.risk_score ?? "—"}<span className="ml-1 text-[8px] text-slate-600">/100</span></span>
-              </button>
+            return <div key={item.case_id} className="grid grid-cols-[100px_110px_120px_140px_minmax(200px,1fr)_70px_140px] items-center gap-3 border-b border-white/[.035] px-4 py-2.5 hover:bg-white/[.02]">
+              <span className="font-mono text-[9px] text-slate-400">{item.case_id}</span>
+              <button type="button" onClick={() => onAnalyze(item.account_id)} className="truncate text-left font-mono text-[10px] text-cyan-100/80 hover:text-cyan-50">{item.account_id}<ArrowUpRight size={10} className="ml-1 inline text-slate-700"/></button>
+              <select aria-label={`Priority for ${item.case_id}`} value={item.priority || "MEDIUM"} disabled={savingCaseId === item.case_id} onChange={(event) => void updateCase(item, "priority", event.target.value)} className="h-7 rounded border border-white/[.08] bg-[#080c13] px-1.5 text-[8px] font-bold tracking-wider text-slate-300 outline-none focus:border-cyan-300/30 disabled:opacity-50"><option value="CRITICAL">CRITICAL</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option></select>
+              <select aria-label={`Workflow status for ${item.case_id}`} value={(item.status || "OPEN").toUpperCase()} disabled={savingCaseId === item.case_id} onChange={(event) => void updateCase(item, "status", event.target.value)} className="h-7 rounded border border-white/[.08] bg-[#080c13] px-1.5 text-[8px] text-slate-400 outline-none focus:border-cyan-300/30 disabled:opacity-50"><option value="OPEN">OPEN</option><option value="INVESTIGATING">INVESTIGATING</option><option value="CLOSED">CLOSED</option><option value="DISMISSED">DISMISSED</option></select>
+              <button type="button" onClick={() => onAnalyze(item.account_id)} className="min-w-0 text-left"><span className={`mr-2 text-[8px] font-semibold ${isHigh ? "text-rose-300" : "text-slate-400"}`}>{item.risk_status || "UNSCORED"}</span><span className="block truncate pt-1 text-[9px] text-slate-600">{item.note || "No analyst note"}</span></button>
+              <span className={`text-right font-mono text-[11px] ${isHigh ? "text-rose-300" : "text-slate-300"}`}>{item.risk_score ?? "—"}<span className="ml-1 text-[8px] text-slate-600">/100</span></span>
               <div className="flex justify-end gap-1"><button type="button" onClick={() => openCaseDetails(item)} className="inline-flex h-7 items-center gap-1 rounded border border-white/[.08] px-2 text-[7px] tracking-wider text-slate-400 hover:border-cyan-300/20 hover:text-cyan-100"><FileText size={10}/> DETAILS</button><button type="button" aria-label={`Open ${item.account_id} network`} onClick={() => onAnalyze(item.account_id)} className="grid h-7 w-7 place-items-center rounded border border-white/[.08] text-slate-500 hover:text-cyan-100"><ArrowUpRight size={12}/></button></div>
             </div>;
           })}
         </div>
       </div></div>
-      <div className="border-t border-white/[.04] px-4 py-2 text-[8px] text-slate-700">Open a case for its evidence and timeline, or open the account’s current network investigation.</div>
+      <div className="border-t border-white/[.04] px-4 py-2 text-[8px] text-slate-700">Set priority and move cases through review from the queue. Status and priority changes are recorded in the case timeline.</div>
     </section>
     {selectedCase && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedCase(null); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="case-detail-title" className="glass-panel flex max-h-[min(86dvh,760px)] w-full max-w-2xl flex-col overflow-hidden rounded-xl shadow-2xl shadow-black/60">

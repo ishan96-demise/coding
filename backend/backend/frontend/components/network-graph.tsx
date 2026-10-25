@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, MutableRefObject, ReactElement } from "react";
 import * as THREE from "three";
 import { forceCollide } from "d3-force-3d";
@@ -40,8 +40,6 @@ type ForceRendererProps = {
   nodeOpacity: number;
   linkColor: (link: GraphLink) => string;
   linkLabel: (link: GraphLink) => string;
-  linkThreeObject: (link: GraphLink) => THREE.Object3D;
-  linkPositionUpdate: (object: THREE.Object3D, coords: { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } }, link: GraphLink) => boolean;
   linkWidth: (link: GraphLink) => number;
   linkOpacity: number;
   linkResolution: number;
@@ -81,9 +79,8 @@ const colors = {
   context: "#718096",
 };
 
-const nodeSphereGeometry = new THREE.SphereGeometry(1, 20, 16);
+const nodeSphereGeometry = new THREE.SphereGeometry(1, 14, 10);
 const nodeSphereMaterials = new Map<string, THREE.MeshStandardMaterial>();
-const nodeGlowMaterials = new Map<string, THREE.MeshBasicMaterial>();
 
 function sphereMaterial(color: string, selected: boolean) {
   const key = `${color}:${selected ? "selected" : "normal"}`;
@@ -101,33 +98,14 @@ function sphereMaterial(color: string, selected: boolean) {
   return material;
 }
 
-function glowMaterial(color: string, selected: boolean) {
-  const key = `${color}:${selected ? "selected" : "normal"}`;
-  let material = nodeGlowMaterials.get(key);
-  if (!material) {
-    material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: selected ? 0.16 : 0.075,
-      depthWrite: false,
-    });
-    nodeGlowMaterials.set(key, material);
-  }
-  return material;
-}
-
 function nodeSphere(node: GraphNode, signals: Map<string, AccountRiskSignal>, emphasized: boolean) {
   const color = entityColor(node, signals);
   const radius = node.type === "account"
     ? riskBand(signals.get(node.id)) === "high" ? 4.5 : 3.8
     : node.type === "ip_address" ? 2.8 : node.type === "device" ? 2.5 : 2.9;
-  const group = new THREE.Group();
-  const halo = new THREE.Mesh(nodeSphereGeometry, glowMaterial(color, emphasized));
-  halo.scale.setScalar(radius * (emphasized ? 1.9 : 1.58));
-  const core = new THREE.Mesh(nodeSphereGeometry, sphereMaterial(color, emphasized));
-  core.scale.setScalar(radius);
-  group.add(halo, core);
-  return group;
+  const sphere = new THREE.Mesh(nodeSphereGeometry, sphereMaterial(color, emphasized));
+  sphere.scale.setScalar(radius * (emphasized ? 1.28 : 1));
+  return sphere;
 }
 
 function riskBand(signal?: AccountRiskSignal): RiskBand {
@@ -163,73 +141,6 @@ function endpointId(endpoint: string | GraphNode) {
 
 function linkTouches(link: GraphLink, nodeId: string) {
   return endpointId(link.source) === nodeId || endpointId(link.target) === nodeId;
-}
-
-const linkCylinderGeometries = new Map<string, THREE.CylinderGeometry>();
-const linkCylinderMaterials = new Map<string, THREE.MeshBasicMaterial>();
-
-function cylinderGeometry(relation: string) {
-  const key = relation === "TRANSFER" ? "transfer" : isInfrastructure(relation) ? "infrastructure" : "context";
-  let geometry = linkCylinderGeometries.get(key);
-  if (!geometry) {
-    const radius = key === "transfer" ? 0.24 : 0.15;
-    geometry = new THREE.CylinderGeometry(radius, radius, 1, 7, 1, true);
-    linkCylinderGeometries.set(key, geometry);
-  }
-  return geometry;
-}
-
-function cylinderMaterial(link: GraphLink, emphasized: boolean) {
-  const color = edgeColor(link, emphasized);
-  const key = `${color}:${emphasized ? "selected" : "normal"}`;
-  let material = linkCylinderMaterials.get(key);
-  if (!material) {
-    material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: emphasized ? 0.88 : link.relation === "TRANSFER" ? 0.19 : 0.1,
-      depthWrite: false,
-    });
-    linkCylinderMaterials.set(key, material);
-  }
-  return material;
-}
-
-function linkCylinder(link: GraphLink, emphasized: boolean) {
-  const mesh = new THREE.Mesh(cylinderGeometry(link.relation), cylinderMaterial(link, emphasized));
-  mesh.renderOrder = 1;
-  return mesh;
-}
-
-function positionLinkCylinder(
-  object: THREE.Object3D,
-  coords: { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } },
-  link: GraphLink,
-  selectedEdgeId: string | undefined,
-  selectedId: string,
-  hoverId: string,
-) {
-  const mesh = object as THREE.Mesh;
-  const vectors = mesh.userData.linkVectors || {
-    start: new THREE.Vector3(),
-    end: new THREE.Vector3(),
-    direction: new THREE.Vector3(),
-    up: new THREE.Vector3(0, 1, 0),
-  };
-  mesh.userData.linkVectors = vectors;
-  vectors.start.set(coords.start.x, coords.start.y, coords.start.z);
-  vectors.end.set(coords.end.x, coords.end.y, coords.end.z);
-  vectors.direction.subVectors(vectors.end, vectors.start);
-  const length = vectors.direction.length();
-  if (length <= 0) return false;
-  const emphasized = link.id === selectedEdgeId || linkTouches(link, selectedId) || Boolean(hoverId && linkTouches(link, hoverId));
-  mesh.position.copy(vectors.start).add(vectors.end).multiplyScalar(0.5);
-  mesh.quaternion.setFromUnitVectors(vectors.up, vectors.direction.divideScalar(length));
-  const thickness = emphasized ? 1.7 : 1;
-  mesh.scale.set(thickness, length, thickness);
-  mesh.renderOrder = emphasized ? 2 : 1;
-  mesh.material = cylinderMaterial(link, emphasized);
-  return true;
 }
 
 function stableHash(value: string) {
@@ -308,7 +219,7 @@ function isInfrastructure(relation: string) {
   return relation === "USED_DEVICE" || relation === "USED_IP";
 }
 
-export function NetworkGraph({
+export const NetworkGraph = memo(function NetworkGraph({
   scope,
   account,
   onAnalyze,
@@ -534,7 +445,7 @@ export function NetworkGraph({
           <span className="text-[10px] font-bold tracking-[.14em] text-slate-100">{scope === "full" ? nationalView === "full" ? "NATIONAL FRAUD INTELLIGENCE GRAPH" : `FOCUSED NETWORK · ${selectedId || account || "ACC_097"}` : `ACCOUNT NETWORK · ${account || "ACC_097"}`}</span>
           <span className="rounded border border-white/[.07] bg-black/20 px-1.5 py-1 font-mono text-[8px] text-slate-500">{loading ? "SYNCING" : `${visible.nodes.length} NODES · ${visible.edges.length} LINKS`}</span>
           <span className="rounded border border-cyan-400/15 bg-cyan-400/[.05] px-1.5 py-1 font-mono text-[7px] tracking-wider text-cyan-200">3D · WEBGL</span>
-          <span className={`flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[7px] tracking-wider ${sourceState === "live" ? "border-emerald-300/15 bg-emerald-300/[.05] text-emerald-200" : sourceState === "connecting" ? "border-amber-300/15 bg-amber-300/[.05] text-amber-200" : "border-rose-300/15 bg-rose-300/[.05] text-rose-200"}`}><i className={`h-1.5 w-1.5 rounded-full ${sourceState === "live" ? "bg-emerald-300" : sourceState === "connecting" ? "bg-amber-300" : "bg-rose-300"}`} />FASTAPI {sourceState === "live" ? "STREAM" : sourceState === "connecting" ? "CONNECTING" : "OFFLINE"}</span>
+          <span className={`flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[7px] tracking-wider ${sourceState === "live" ? "border-emerald-300/15 bg-emerald-300/[.05] text-emerald-200" : sourceState === "connecting" ? "border-amber-300/15 bg-amber-300/[.05] text-amber-200" : "border-rose-300/15 bg-rose-300/[.05] text-rose-200"}`}><i className={`h-1.5 w-1.5 rounded-full ${sourceState === "live" ? "bg-emerald-300" : sourceState === "connecting" ? "bg-amber-300" : "bg-rose-300"}`} />FASTAPI {sourceState === "live" ? "STREAM" : sourceState === "connecting" ? "LOADING" : "OFFLINE"}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {scope === "full" && <>
@@ -580,15 +491,13 @@ export function NetworkGraph({
               return isAccount ? (high ? 4.3 : 3.2) * (selected ? 1.32 : 1) : (node.type === "device" || node.type === "ip_address" ? 1.55 : 1.85) * (selected ? 1.25 : 1);
             }}
             nodeRelSize={4.7}
-            nodeResolution={16}
+            nodeResolution={10}
             nodeOpacity={0.96}
             linkColor={(link) => edgeColor(link, link.id === selectedEdge?.id || linkTouches(link, selectedId) || Boolean(hoverId && linkTouches(link, hoverId)))}
             linkLabel={(link) => linkEvidenceLabel(link)}
-            linkThreeObject={(link) => linkCylinder(link, link.id === selectedEdge?.id || linkTouches(link, selectedId))}
-            linkPositionUpdate={(object, coords, link) => positionLinkCylinder(object, coords, link, selectedEdge?.id, selectedId, hoverId)}
-            linkWidth={(link) => link.id === selectedEdge?.id || linkTouches(link, selectedId) || Boolean(hoverId && linkTouches(link, hoverId)) ? 1.35 : link.relation === "TRANSFER" ? 0.48 : 0.3}
-            linkOpacity={0.32}
-            linkResolution={6}
+            linkWidth={() => 0}
+            linkOpacity={0.28}
+            linkResolution={2}
             linkDirectionalArrowLength={(link) => link.relation === "TRANSFER" ? 2.2 : 0}
             linkDirectionalArrowRelPos={0.87}
             linkDirectionalArrowColor={(link) => edgeColor(link, link.id === selectedEdge?.id || linkTouches(link, selectedId))}
@@ -596,11 +505,11 @@ export function NetworkGraph({
             linkDirectionalParticleWidth={1.8}
             linkDirectionalParticleSpeed={0.004}
             linkDirectionalParticleColor={() => "#A5F3FC"}
-            warmupTicks={26}
-            cooldownTicks={100}
-            cooldownTime={8000}
-            d3AlphaDecay={0.035}
-            d3VelocityDecay={0.36}
+            warmupTicks={14}
+            cooldownTicks={55}
+            cooldownTime={3200}
+            d3AlphaDecay={0.065}
+            d3VelocityDecay={0.44}
             onNodeClick={onSelectNode}
             onNodeHover={onNodeHover}
             onLinkClick={onSelectLink}
@@ -640,7 +549,7 @@ export function NetworkGraph({
       </div>
     </div>
   );
-}
+});
 
 function FilterButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return <button type="button" onClick={onClick} aria-pressed={active} className={`rounded border px-2 py-1 font-mono text-[7px] tracking-wider transition ${active ? "border-white/[.1] bg-white/[.055] text-cyan-200" : "border-transparent text-slate-600 hover:text-slate-400"}`}>{label}</button>;

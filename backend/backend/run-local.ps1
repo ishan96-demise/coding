@@ -85,7 +85,7 @@ try {
         Write-Host "FinSentinels API is already running and ready."
     } else {
         Write-Host "Starting the FinSentinels API..."
-        $managedEnvironmentNames = @("FIN_SENTINELS_BACKEND_API_KEY", "FIN_SENTINELS_FRONTEND_URL")
+        $managedEnvironmentNames = @("FIN_SENTINELS_BACKEND_API_KEY", "FIN_SENTINELS_FRONTEND_URL", "FINSENTINELS_DATA_MODE")
         $savedEnvironment = @{}
         foreach ($name in $managedEnvironmentNames) {
             $variable = Get-Item -Path "Env:$name" -ErrorAction SilentlyContinue
@@ -95,8 +95,9 @@ try {
             }
         }
         try {
+            # Avoid Uvicorn's reloader subprocess: it is unreliable with the current Windows Python runtime.
             Start-Process -FilePath $pythonPath `
-                -ArgumentList @("-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "$apiPort", "--reload") `
+                -ArgumentList @("-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "$apiPort") `
                 -WorkingDirectory $projectRoot -WindowStyle Normal | Out-Null
         } finally {
             foreach ($name in $managedEnvironmentNames) {

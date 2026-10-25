@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections import defaultdict
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any
 
 import networkx as nx
@@ -11,8 +13,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MOCK_FILE = os.path.join(DATA_DIR, "mock_transactions.json")
 NORMAL_FILE = os.path.join(DATA_DIR, "normal_transactions.json")
+DATA_MODE = os.environ.get("FINSENTINELS_DATA_MODE", "demo").strip().lower()
+if DATA_MODE not in {"demo", "production"}:
+    raise RuntimeError("FINSENTINELS_DATA_MODE must be 'demo' or 'production'.")
+_DEFAULT_RUNTIME_DIR = os.path.join(BASE_DIR, "runtime-data") if DATA_MODE == "production" else DATA_DIR
 LIVE_FILE = os.path.join(
-    os.environ.get("FINSENTINELS_RUNTIME_DIR", DATA_DIR),
+    os.environ.get("FINSENTINELS_RUNTIME_DIR", _DEFAULT_RUNTIME_DIR),
     "live_transactions.json",
 )
 
@@ -37,6 +43,20 @@ LOCATION_COUNTRIES = {
     "pune": "India",
 }
 
+_CACHE_LOCK = Lock()
+_TRANSACTION_CACHE_SIGNATURE: tuple[tuple[str, int, int], ...] | None = None
+_TRANSACTION_CACHE: list[dict[str, Any]] | None = None
+_GRAPH_CACHE_SIGNATURE: tuple[tuple[str, int, int], ...] | None = None
+_GRAPH_CACHE: nx.MultiDiGraph | None = None
+
+
+def _source_signature(paths: list[str]) -> tuple[tuple[str, int, int], ...]:
+    signature = []
+    for path in paths:
+        stat = os.stat(path)
+        signature.append((path, stat.st_mtime_ns, stat.st_size))
+    return tuple(signature)
+
 
 def _country_from_location(location: Any) -> str | None:
     value = str(location or "").strip()
@@ -52,6 +72,8 @@ def _country_from_location(location: Any) -> str | None:
 
 def find_data_file() -> str:
     """Return the primary suspicious/mock transaction file for compatibility."""
+    if DATA_MODE != "demo":
+        raise FileNotFoundError("Bundled demonstration data is disabled in production mode.")
     candidates = [
         MOCK_FILE,
         os.path.join(DATA_DIR, "data", "mock_transactions.json"),
@@ -66,17 +88,19 @@ def find_data_file() -> str:
 
 
 def find_data_files() -> list[str]:
-    """Return all transaction datasets used by the MVP, without duplicates."""
+    """Return enabled transaction datasets, without mixing demo and live data."""
     files: list[str] = []
 
-    # Normal reference transactions are the base population (ACC_001..ACC_099).
-    if os.path.isfile(NORMAL_FILE):
-        files.append(NORMAL_FILE)
+    if DATA_MODE == "demo":
+        # Synthetic population and scenarios are only available in demo mode.
+        if os.path.isfile(NORMAL_FILE):
+            files.append(NORMAL_FILE)
 
-    # Mock/suspicious transactions add the fraud scenarios used by the demo.
-    mock = find_data_file()
-    if os.path.abspath(mock) not in {os.path.abspath(path) for path in files}:
-        files.append(mock)
+        mock = find_data_file()
+        if os.path.abspath(mock) not in {os.path.abspath(path) for path in files}:
+            files.append(mock)
+
+    # In production, only explicitly ingested transactions are scored.
     if os.path.isfile(LIVE_FILE):
         files.append(LIVE_FILE)
 
@@ -171,29 +195,67 @@ def _normalize_transaction(index: int, tx: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_transactions() -> list[dict[str, Any]]:
-    """Load and validate the complete demo dataset.
+    """Load and validate enabled transactions.
 
-    The project intentionally combines the normal reference population with
-    the suspicious/mock transactions. This gives the investigator both normal
-    accounts (ACC_001..ACC_099) and the synthetic fraud scenarios in one graph.
+    Demo mode combines the reference population with synthetic scenarios.
+    Production mode reads only explicitly ingested transactions and starts
+    empty until a source is connected.
     """
+    global _TRANSACTION_CACHE, _TRANSACTION_CACHE_SIGNATURE
     sources = find_data_files()
-    if not sources:
-        raise FileNotFoundError("No transaction dataset found in the data folder.")
+    signature = _source_signature(sources)
+    with _CACHE_LOCK:
+        if _TRANSACTION_CACHE is not None and _TRANSACTION_CACHE_SIGNATURE == signature:
+            return _TRANSACTION_CACHE
 
+    if not sources:
+        if DATA_MODE == "production":
+            cleaned: list[dict[str, Any]] = []
+        else:
+            raise FileNotFoundError("No transaction dataset found in the data folder.")
+    else:
+        seen_ids: set[str] = set()
+        cleaned = []
+
+        for path in sources:
+            for index, raw in enumerate(_read_json(path), start=len(cleaned) + 1):
+                if not isinstance(raw, dict):
+                    raise ValueError(f"Transaction #{index} must be a JSON object")
+                tx = _normalize_transaction(index, raw)
+                if tx["transaction_id"] in seen_ids:
+                    raise ValueError(f"Duplicate transaction_id detected: {tx['transaction_id']}")
+                seen_ids.add(tx["transaction_id"])
+                cleaned.append(tx)
+
+        cleaned.sort(key=lambda item: (item["timestamp_dt"], item["transaction_id"]))
+
+    # Do not publish a cache entry if an atomic ingest replaced a source while
+    # the files were being read. The next call can then rebuild from new data.
+    if _source_signature(find_data_files()) == signature:
+        with _CACHE_LOCK:
+            _TRANSACTION_CACHE = cleaned
+            _TRANSACTION_CACHE_SIGNATURE = signature
+    return cleaned
+
+
+def load_synthetic_transactions() -> list[dict[str, Any]]:
+    """Load only the bundled synthetic records for isolated customer previews.
+
+    This is deliberately separate from ``load_transactions``: production
+    analyst scoring continues to read only explicitly ingested live records.
+    """
+    sources = [path for path in (NORMAL_FILE, MOCK_FILE) if os.path.isfile(path)]
     seen_ids: set[str] = set()
     cleaned: list[dict[str, Any]] = []
-
     for path in sources:
         for index, raw in enumerate(_read_json(path), start=len(cleaned) + 1):
             if not isinstance(raw, dict):
                 raise ValueError(f"Transaction #{index} must be a JSON object")
-            tx = _normalize_transaction(index, raw)
-            if tx["transaction_id"] in seen_ids:
-                raise ValueError(f"Duplicate transaction_id detected: {tx['transaction_id']}")
-            seen_ids.add(tx["transaction_id"])
-            cleaned.append(tx)
-
+            transaction = _normalize_transaction(index, raw)
+            if transaction["transaction_id"] in seen_ids:
+                raise ValueError(f"Duplicate transaction_id detected: {transaction['transaction_id']}")
+            seen_ids.add(transaction["transaction_id"])
+            cleaned.append(transaction)
     cleaned.sort(key=lambda item: (item["timestamp_dt"], item["transaction_id"]))
     return cleaned
 
@@ -323,13 +385,29 @@ def _build_graph() -> nx.MultiDiGraph:
 
 
 def load_graph_data() -> nx.MultiDiGraph:
-    # The demo data is small, so rebuilding per request keeps file edits
-    # immediately visible and avoids stale development caches.
-    return _build_graph()
+    """Return the current graph, rebuilding only when an input file changes."""
+    global _GRAPH_CACHE, _GRAPH_CACHE_SIGNATURE
+    signature = _source_signature(find_data_files())
+    with _CACHE_LOCK:
+        if _GRAPH_CACHE is not None and _GRAPH_CACHE_SIGNATURE == signature:
+            return _GRAPH_CACHE
+
+    graph = _build_graph()
+    if _source_signature(find_data_files()) == signature:
+        with _CACHE_LOCK:
+            _GRAPH_CACHE = graph
+            _GRAPH_CACHE_SIGNATURE = signature
+    return graph
 
 def invalidate_cache() -> None:
-    """Compatibility no-op kept for callers from earlier project versions."""
-    return None
+    """Clear transaction and graph caches after a source update."""
+    global _GRAPH_CACHE, _GRAPH_CACHE_SIGNATURE
+    global _TRANSACTION_CACHE, _TRANSACTION_CACHE_SIGNATURE
+    with _CACHE_LOCK:
+        _GRAPH_CACHE = None
+        _GRAPH_CACHE_SIGNATURE = None
+        _TRANSACTION_CACHE = None
+        _TRANSACTION_CACHE_SIGNATURE = None
 
 
 def _account_graph(G: nx.MultiDiGraph) -> nx.DiGraph:
@@ -342,51 +420,135 @@ def _account_graph(G: nx.MultiDiGraph) -> nx.DiGraph:
     return AG
 
 
+_GRAPH_ANALYSIS_CACHE_KEY = "_fin_sentinels_analysis_context"
+
+
+def _transaction_row(source: str, target: str, key: str, data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "transaction_id": data.get("transaction_id", key),
+        "source": source,
+        "target": target,
+        "amount": data.get("amount", 0),
+        "currency": data.get("currency", "INR"),
+        "amount_inr": data.get("amount_inr"),
+        "instructed_amount": data.get("instructed_amount"),
+        "instructed_currency": data.get("instructed_currency"),
+        "fx_divergence_ratio": data.get("fx_divergence_ratio"),
+        "currency_mismatch": data.get("currency_mismatch", False),
+        "fx_unconverted": data.get("fx_unconverted", False),
+        "source_provider": data.get("source_provider"),
+        "source_event_id": data.get("source_event_id"),
+        "direction": data.get("direction"),
+        "timestamp": data.get("timestamp"),
+        "device_id": data.get("device_id"),
+        "ip_address": data.get("ip_address"),
+        "merchant_id": data.get("merchant_id"),
+        "location": data.get("location"),
+        "location_country": data.get("location_country"),
+        "source_country": data.get("source_country"),
+        "target_country": data.get("target_country"),
+        "source_name": data.get("source_name"),
+        "target_name": data.get("target_name"),
+    }
+
+
+def _graph_analysis_context(G: nx.MultiDiGraph) -> dict[str, Any]:
+    """Build expensive, graph-wide analysis data once per immutable graph snapshot."""
+    cached = G.graph.get(_GRAPH_ANALYSIS_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    account_graph = _account_graph(G)
+    degree_centrality = (
+        nx.degree_centrality(account_graph)
+        if len(account_graph) > 1
+        else {account_id: 0.0 for account_id in account_graph}
+    )
+    cycles_by_account: dict[str, list[list[str]]] = defaultdict(list)
+    for component in nx.strongly_connected_components(account_graph):
+        if len(component) > 1:
+            cycle = sorted(component)
+            for account_id in component:
+                cycles_by_account[account_id].append(cycle)
+
+    transactions_by_account: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for source, target, key, data in G.edges(keys=True, data=True):
+        if data.get("edge_type") != "TRANSFER":
+            continue
+        row = _transaction_row(source, target, key, data)
+        for account_id in {source, target}:
+            if account_id in account_graph:
+                transactions_by_account[account_id].append(row)
+    for rows in transactions_by_account.values():
+        rows.sort(key=lambda row: row.get("timestamp") or "")
+
+    shared_devices_by_account: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for device, details in G.nodes(data=True):
+        if details.get("type") != "device":
+            continue
+        users = {
+            source
+            for source, _target, _key, edge in G.in_edges(device, keys=True, data=True)
+            if edge.get("edge_type") == "USED_DEVICE"
+            and G.nodes[source].get("type") == "account"
+        }
+        if len(users) < 2:
+            continue
+        for account_id in users:
+            transaction_count = sum(
+                edge.get("transaction_count", 0)
+                for edge in G[account_id][device].values()
+                if edge.get("edge_type") == "USED_DEVICE"
+            )
+            shared_devices_by_account[account_id].append({
+                "device_id": device,
+                "accounts": sorted(users),
+                "account_count": len(users),
+                "transaction_count": transaction_count,
+            })
+    for devices in shared_devices_by_account.values():
+        devices.sort(key=lambda item: (-item["account_count"], item["device_id"]))
+
+    context = {
+        "account_graph": account_graph,
+        "degree_centrality": degree_centrality,
+        "cycles_by_account": cycles_by_account,
+        "transactions_by_account": transactions_by_account,
+        "shared_devices_by_account": shared_devices_by_account,
+    }
+    G.graph[_GRAPH_ANALYSIS_CACHE_KEY] = context
+    return context
+
+
 def get_account_transactions(G: nx.MultiDiGraph, account_id: str) -> list[dict[str, Any]]:
     account_id = account_id.strip().upper()
-    rows = []
     if account_id not in G or G.nodes[account_id].get("type") != "account":
-        return rows
+        return []
+    context = G.graph.get(_GRAPH_ANALYSIS_CACHE_KEY)
+    if context is not None:
+        return [dict(row) for row in context["transactions_by_account"].get(account_id, [])]
+    rows = []
     for source, target, key, data in G.edges(keys=True, data=True):
         if data.get("edge_type") != "TRANSFER":
             continue
         if source != account_id and target != account_id:
             continue
-        rows.append({
-            "transaction_id": data.get("transaction_id", key),
-            "source": source,
-            "target": target,
-            "amount": data.get("amount", 0),
-            "currency": data.get("currency", "INR"),
-            "amount_inr": data.get("amount_inr"),
-            "instructed_amount": data.get("instructed_amount"),
-            "instructed_currency": data.get("instructed_currency"),
-            "fx_divergence_ratio": data.get("fx_divergence_ratio"),
-            "currency_mismatch": data.get("currency_mismatch", False),
-            "fx_unconverted": data.get("fx_unconverted", False),
-            "source_provider": data.get("source_provider"),
-            "source_event_id": data.get("source_event_id"),
-            "direction": data.get("direction"),
-            "timestamp": data.get("timestamp"),
-            "device_id": data.get("device_id"),
-            "ip_address": data.get("ip_address"),
-            "merchant_id": data.get("merchant_id"),
-            "location": data.get("location"),
-            "location_country": data.get("location_country"),
-            "source_country": data.get("source_country"),
-            "target_country": data.get("target_country"),
-            "source_name": data.get("source_name"),
-            "target_name": data.get("target_name"),
-        })
+        rows.append(_transaction_row(source, target, key, data))
     rows.sort(key=lambda row: row.get("timestamp") or "")
     return rows
 
 
 def get_shared_devices(G: nx.MultiDiGraph, account_id: str) -> list[dict[str, Any]]:
     account_id = account_id.strip().upper()
-    result = []
     if account_id not in G:
-        return result
+        return []
+    context = G.graph.get(_GRAPH_ANALYSIS_CACHE_KEY)
+    if context is not None:
+        return [
+            {**device, "accounts": list(device["accounts"])}
+            for device in context["shared_devices_by_account"].get(account_id, [])
+        ]
+    result = []
     for device, data in G.nodes(data=True):
         if data.get("type") != "device":
             continue
@@ -419,6 +581,9 @@ def _cycle_components(G: nx.MultiDiGraph) -> list[set[str]]:
 
 def get_cycles_for_account(G: nx.MultiDiGraph, account_id: str) -> list[list[str]]:
     account_id = account_id.strip().upper()
+    context = G.graph.get(_GRAPH_ANALYSIS_CACHE_KEY)
+    if context is not None:
+        return [list(cycle) for cycle in context["cycles_by_account"].get(account_id, [])]
     matches = [sorted(component) for component in _cycle_components(G) if account_id in component]
     return matches
 
@@ -472,12 +637,13 @@ def _risk_amount(tx: dict[str, Any]) -> float:
 
 
 def _risk_factors(G: nx.MultiDiGraph, account_id: str) -> dict[str, Any]:
-    cycles = get_cycles_for_account(G, account_id)
-    transactions = get_account_transactions(G, account_id)
-    shared = get_shared_devices(G, account_id)
-    AG = _account_graph(G)
+    context = _graph_analysis_context(G)
+    cycles = context["cycles_by_account"].get(account_id, [])
+    transactions = context["transactions_by_account"].get(account_id, [])
+    shared = context["shared_devices_by_account"].get(account_id, [])
+    AG = context["account_graph"]
 
-    degree_centrality = nx.degree_centrality(AG) if len(AG) > 1 else {account_id: 0.0}
+    degree_centrality = context["degree_centrality"]
     degree = AG.degree(account_id) if account_id in AG else 0
     outbound_transactions = [tx for tx in transactions if tx["source"] == account_id]
     velocity = _transaction_velocity_count(outbound_transactions)

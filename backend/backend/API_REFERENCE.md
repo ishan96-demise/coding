@@ -44,7 +44,33 @@ Returns the newest transactions for the live transaction feed.
 
 `GET /api/stream/intelligence?account_id=ACC_097&include_widgets=true`
 
-Server-Sent Events stream. Emits `connected` on connection, `transaction` for recent/new feed records, and `widget` for structured explainable graph-analysis output. `account_id` seeds the stream with that account's current analysis and follows new activity touching its directly linked transaction/device/IP network. Set `include_widgets=false` for transaction events only. The client should reconnect automatically if the connection drops. The current widget producers are deterministic graph, network-risk, and account-behavior analyses; no external LLM provider is configured.
+Server-Sent Events stream. Emits `connected`, then one or more `snapshot` batches until all account explanations are sent. Every batch includes the total `account_count`, cumulative `processed_accounts`, a `complete` flag, and up to eight accounts' three explanation widgets. When `account_id` is supplied, the snapshot contains only that account. It then emits `transaction` events for recent/new feed records and `widget` events when new transactions update account evidence. Each account has network-risk, graph-structure, and account-behavior explanations with its full rule evidence and score components. Set `include_widgets=false` for transaction events only. The client should reconnect automatically if the connection drops. The current widget producers are deterministic graph, network-risk, and account-behavior analyses; no external LLM provider is configured.
+
+Snapshot event data follows this shape:
+
+```json
+{
+  "account_count": 99,
+  "processed_accounts": 8,
+  "complete": false,
+  "widgets": [
+    {
+      "event_id": "snapshot:ACC_001:network:ACC_001",
+      "agent": "Network Risk Agent",
+      "widget_type": "risk-score",
+      "subject": "ACC_001",
+      "score": 18,
+      "risk_level": "SAFE",
+      "confidence": null,
+      "confidence_label": "Not calibrated",
+      "rationale": "Network risk explanation based on the current graph.",
+      "evidence": ["Observed graph evidence"],
+      "score_components": {},
+      "timestamp": "2026-10-20T10:30:00+00:00"
+    }
+  ]
+}
+```
 
 Widget event data follows this shape:
 

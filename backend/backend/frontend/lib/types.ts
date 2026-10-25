@@ -34,11 +34,24 @@ export type IntelligenceSnapshot = {
   network_score_method?: string;
   account_count: number;
   transaction_count: number;
+  high_risk_network_accounts?: number;
+  watch_network_accounts?: number;
+  priority_accounts?: {
+    account_id: string;
+    risk_score: number;
+    status: string;
+    reasons?: string[];
+    cycle_count?: number;
+    mule_account?: boolean;
+  }[];
   shared_device_count: number;
   shared_ip_count: number;
   observed_countries: string[];
   observed_routes?: string[];
   last_updated?: string;
+  last_transaction_at?: string | null;
+  data_mode?: "demo" | "production";
+  source_mode?: string;
 };
 
 export type NetworkNode = {
