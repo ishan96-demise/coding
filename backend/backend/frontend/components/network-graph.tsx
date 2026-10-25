@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ComponentType, MutableRefObject, ReactElement } from "react";
+import { Component, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType, MutableRefObject, ReactElement, ReactNode } from "react";
 import * as THREE from "three";
 import { forceCollide } from "d3-force-3d";
 import { Activity, AlertCircle, Crosshair, Fingerprint, Globe2, LoaderCircle, MapPin, Network, RefreshCw, Smartphone, Store, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -139,7 +139,7 @@ function endpointId(endpoint: string | GraphNode) {
   return typeof endpoint === "string" ? endpoint : endpoint.id;
 }
 
-function linkTouches(link: GraphLink, nodeId: string) {
+function linkTouches(link: GraphLink | NetworkEdge, nodeId: string) {
   return endpointId(link.source) === nodeId || endpointId(link.target) === nodeId;
 }
 
@@ -215,6 +215,132 @@ function seedPositions(nodes: NetworkNode[], edges: NetworkEdge[], focusId?: str
   return nodes.map((node) => ({ ...node, ...(positions.get(node.id) || { x: 0, y: 0, z: 0 }) }));
 }
 
+function seedPositions2D(nodes: NetworkNode[], edges: NetworkEdge[], focusId?: string, spacing = 100) {
+  const positions = new Map<string, { x: number; y: number }>();
+  const scale = spacing / 100;
+  const accounts = nodes.filter((node) => node.type === "account").sort((left, right) => left.id.localeCompare(right.id));
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+  accounts.forEach((node, index) => {
+    if (node.id === focusId) {
+      positions.set(node.id, { x: 0, y: 0 });
+      return;
+    }
+    const seed = stableHash(node.id);
+    const angle = index * goldenAngle + unitNoise(seed, 1) * 0.28;
+    const progress = accounts.length > 1 ? Math.sqrt(index / (accounts.length - 1)) : 0;
+    const radius = (focusId ? 145 : 48) + progress * 248 + Math.abs(unitNoise(seed, 3)) * 20;
+    positions.set(node.id, { x: Math.cos(angle) * radius * scale, y: Math.sin(angle) * radius * scale });
+  });
+
+  for (const node of nodes.filter((item) => item.type !== "account").sort((left, right) => left.id.localeCompare(right.id))) {
+    const seed = stableHash(node.id);
+    const linkedAccounts = new Set<string>();
+    for (const edge of edges) {
+      if (edge.source === node.id && positions.has(edge.target)) linkedAccounts.add(edge.target);
+      if (edge.target === node.id && positions.has(edge.source)) linkedAccounts.add(edge.source);
+    }
+    const neighbors = [...linkedAccounts].map((id) => positions.get(id)).filter((point): point is { x: number; y: number } => Boolean(point));
+    const center = neighbors.length
+      ? neighbors.reduce((sum, point) => ({ x: sum.x + point.x / neighbors.length, y: sum.y + point.y / neighbors.length }), { x: 0, y: 0 })
+      : { x: unitNoise(seed, 4) * 120 * scale, y: unitNoise(seed, 5) * 120 * scale };
+    const baseSpread = node.type === "ip_address" ? 78 : node.type === "device" ? 66 : 54;
+    const spread = (baseSpread + Math.min(54, node.shared_account_count * 5) + Math.abs(unitNoise(seed, 7)) * 24) * scale;
+    const angle = unitNoise(seed, 9) * Math.PI;
+    positions.set(node.id, { x: center.x + Math.cos(angle) * spread, y: center.y + Math.sin(angle) * spread });
+  }
+
+  return nodes.map((node) => ({ ...node, ...(positions.get(node.id) || { x: 0, y: 0 }) }));
+}
+
+type RendererBoundaryProps = { children: ReactNode; fallback: ReactNode; onError: () => void };
+class WebGLRendererBoundary extends Component<RendererBoundaryProps, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+type GraphNode2D = NetworkNode & { x: number; y: number };
+function TwoDimensionalNetworkGraph({
+  nodes,
+  edges,
+  signals,
+  selectedId,
+  selectedEdgeId,
+  hoverId,
+  zoom,
+  onNodeSelect,
+  onNodeHover,
+  onEdgeSelect,
+}: {
+  nodes: GraphNode2D[];
+  edges: NetworkEdge[];
+  signals: Map<string, AccountRiskSignal>;
+  selectedId: string;
+  selectedEdgeId?: string;
+  hoverId: string;
+  zoom: number;
+  onNodeSelect: (node: NetworkNode) => void;
+  onNodeHover: (node: NetworkNode | null) => void;
+  onEdgeSelect: (edge: NetworkEdge) => void;
+}) {
+  const positions = new Map(nodes.map((node) => [node.id, node]));
+  const accountCount = nodes.filter((node) => node.type === "account").length;
+
+  return <svg className="absolute inset-0 h-full w-full" viewBox={`${-500 / zoom} ${-350 / zoom} ${1000 / zoom} ${700 / zoom}`} role="img" aria-label="Interactive two-dimensional account network">
+    <g>
+      {edges.map((edge) => {
+        const source = positions.get(edge.source);
+        const target = positions.get(edge.target);
+        if (!source || !target) return null;
+        const emphasized = edge.id === selectedEdgeId || linkTouches(edge, selectedId) || Boolean(hoverId && linkTouches(edge, hoverId));
+        const stroke = edgeColor(edge, emphasized);
+        return <g key={edge.id} onClick={() => onEdgeSelect(edge)} className="cursor-pointer">
+          <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={stroke} strokeWidth={emphasized ? 1.8 : 0.9} strokeOpacity={emphasized ? 0.88 : 0.28} />
+          <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="transparent" strokeWidth={10} />
+          <title>{linkEvidenceLabel(edge)}</title>
+        </g>;
+      })}
+      {nodes.map((node) => {
+        const selected = node.id === selectedId;
+        const hovered = node.id === hoverId;
+        const account = node.type === "account";
+        const radius = account ? (selected || hovered ? 8 : 5.8) : node.type === "ip_address" ? 4.3 : node.type === "device" ? 4 : 3.7;
+        const fill = entityColor(node, signals);
+        const signal = signals.get(node.id);
+        const label = `${node.label || node.id}${account && signal ? ` · ${signal.status} ${signal.risk_score}/100` : ""} · ${node.connection_count} links`;
+        return <g
+          key={node.id}
+          role="button"
+          tabIndex={0}
+          aria-label={`Inspect ${label}`}
+          aria-pressed={selected}
+          className="cursor-pointer outline-none"
+          onClick={() => onNodeSelect(node)}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onNodeSelect(node); } }}
+          onMouseEnter={() => onNodeHover(node)}
+          onMouseLeave={() => onNodeHover(null)}
+        >
+          {(selected || hovered) && <circle cx={node.x} cy={node.y} r={radius + 6} fill={fill} fillOpacity={0.12} stroke={fill} strokeOpacity={0.65} strokeWidth={1} />}
+          <circle cx={node.x} cy={node.y} r={radius} fill={fill} stroke={selected ? "#E6FCFF" : "#09111A"} strokeWidth={selected ? 2 : 1.3} />
+          {(accountCount <= 42 || selected || hovered) && <text x={node.x + radius + 5} y={node.y + 3} fill={selected || hovered ? "#E2F7FA" : "#91A4B8"} fontSize={8} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace">{node.label || node.id}</text>}
+          <title>{label}</title>
+        </g>;
+      })}
+    </g>
+  </svg>;
+}
+
 function isInfrastructure(relation: string) {
   return relation === "USED_DEVICE" || relation === "USED_IP";
 }
@@ -233,6 +359,8 @@ export const NetworkGraph = memo(function NetworkGraph({
   const hostRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceRef | undefined>(undefined);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [rendererMode, setRendererMode] = useState<"checking" | "3d" | "2d">("checking");
+  const [svgZoom, setSvgZoom] = useState(1);
   const [graph, setGraph] = useState<NetworkGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -264,6 +392,19 @@ export const NetworkGraph = memo(function NetworkGraph({
     });
     observer.observe(host);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let webglAvailable = false;
+    try {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("webgl2", { antialias: false }) || canvas.getContext("webgl", { antialias: false });
+      webglAvailable = Boolean(context);
+      context?.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      webglAvailable = false;
+    }
+    setRendererMode(webglAvailable ? "3d" : "2d");
   }, []);
 
   useEffect(() => {
@@ -370,6 +511,10 @@ export const NetworkGraph = memo(function NetworkGraph({
     const links = visible.edges.map((edge) => ({ ...edge, source: edge.source, target: edge.target }));
     return { nodes, links };
   }, [visible, activeFocusId, spacing]);
+  const graphData2D = useMemo(
+    () => seedPositions2D(visible.nodes, visible.edges, activeFocusId, spacing),
+    [visible, activeFocusId, spacing],
+  );
 
   const selectedNode = visible.nodes.find((node) => node.id === selectedId) || null;
   const selectedSignal = selectedNode?.type === "account" ? signals.get(selectedNode.id) : undefined;
@@ -406,15 +551,22 @@ export const NetworkGraph = memo(function NetworkGraph({
   }, [graphData, dimensions.width, dimensions.height]);
 
   const fitToScreen = useCallback(() => {
-    graphRef.current?.zoomToFit(650, 54);
+    const instance = graphRef.current;
+    if (instance) instance.zoomToFit(650, 54);
+    else setSvgZoom(1);
   }, []);
 
   const zoomBy = useCallback((factor: number) => {
     const instance = graphRef.current;
-    if (!instance) return;
+    if (!instance) {
+      setSvgZoom((current) => Math.min(2.6, Math.max(0.55, current / factor)));
+      return;
+    }
     const position = instance.camera().position;
     instance.cameraPosition({ x: position.x * factor, y: position.y * factor, z: position.z * factor }, undefined, 280);
   }, []);
+
+  const use2DFallback = useCallback(() => setRendererMode("2d"), []);
 
   const toggleFilter = (key: keyof Filters) => setFilters((current) => ({ ...current, [key]: !current[key] }));
   const chooseNationalView = (mode: NationalViewMode) => {
@@ -425,6 +577,18 @@ export const NetworkGraph = memo(function NetworkGraph({
   const onSelectNode = (node: GraphNode) => { setSelectedId(node.id); setSelectedEdge(null); };
   const onNodeHover = (node: GraphNode | null) => setHoverId(node?.id || "");
   const onSelectLink = (link: GraphLink) => setSelectedEdge({ ...link, source: endpointId(link.source), target: endpointId(link.target) });
+  const fallbackGraph = <TwoDimensionalNetworkGraph
+    nodes={graphData2D}
+    edges={visible.edges}
+    signals={signals}
+    selectedId={selectedId}
+    selectedEdgeId={selectedEdge?.id}
+    hoverId={hoverId}
+    zoom={svgZoom}
+    onNodeSelect={onSelectNode}
+    onNodeHover={onNodeHover}
+    onEdgeSelect={(edge) => onSelectLink({ ...edge, source: edge.source, target: edge.target })}
+  />;
   const onEngineStop = useCallback(() => {
     for (const node of graphData.nodes) {
       if (Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)) {
@@ -444,7 +608,7 @@ export const NetworkGraph = memo(function NetworkGraph({
           <div className="grid h-6 w-6 place-items-center rounded-md border border-cyan-300/15 bg-cyan-300/[.06] text-cyan-200"><Network size={13} /></div>
           <span className="text-[10px] font-bold tracking-[.14em] text-slate-100">{scope === "full" ? nationalView === "full" ? "NATIONAL FRAUD INTELLIGENCE GRAPH" : `FOCUSED NETWORK · ${selectedId || account || "ACC_097"}` : `ACCOUNT NETWORK · ${account || "ACC_097"}`}</span>
           <span className="rounded border border-white/[.07] bg-black/20 px-1.5 py-1 font-mono text-[8px] text-slate-500">{loading ? "SYNCING" : `${visible.nodes.length} NODES · ${visible.edges.length} LINKS`}</span>
-          <span className="rounded border border-cyan-400/15 bg-cyan-400/[.05] px-1.5 py-1 font-mono text-[7px] tracking-wider text-cyan-200">3D · WEBGL</span>
+          <span className="rounded border border-cyan-400/15 bg-cyan-400/[.05] px-1.5 py-1 font-mono text-[7px] tracking-wider text-cyan-200">{rendererMode === "2d" ? "2D · SVG COMPATIBILITY" : rendererMode === "checking" ? "CHECKING GRAPH SUPPORT" : "3D · WEBGL"}</span>
           <span className={`flex items-center gap-1 rounded border px-1.5 py-1 font-mono text-[7px] tracking-wider ${sourceState === "live" ? "border-emerald-300/15 bg-emerald-300/[.05] text-emerald-200" : sourceState === "connecting" ? "border-amber-300/15 bg-amber-300/[.05] text-amber-200" : "border-rose-300/15 bg-rose-300/[.05] text-rose-200"}`}><i className={`h-1.5 w-1.5 rounded-full ${sourceState === "live" ? "bg-emerald-300" : sourceState === "connecting" ? "bg-amber-300" : "bg-rose-300"}`} />FASTAPI {sourceState === "live" ? "STREAM" : sourceState === "connecting" ? "LOADING" : "OFFLINE"}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -462,7 +626,9 @@ export const NetworkGraph = memo(function NetworkGraph({
 
         <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[minmax(0,1fr)_220px] lg:grid-cols-[minmax(0,1fr)_250px]">
         <div ref={hostRef} className="graph-grid-overlay relative min-h-[340px] min-w-0 overflow-hidden border-r border-white/[.06] bg-[#070b12]">
-          {graph && dimensions.width > 80 && dimensions.height > 80 && <ForceGraph3D
+          {rendererMode === "checking" && graph && dimensions.width > 80 && dimensions.height > 80 && <div className="absolute inset-0 grid place-items-center text-[10px] text-slate-500"><LoaderCircle size={14} className="mr-2 inline animate-spin text-cyan-300" />Checking graphics support…</div>}
+          {rendererMode === "2d" && graph && dimensions.width > 80 && dimensions.height > 80 && fallbackGraph}
+          {rendererMode === "3d" && graph && dimensions.width > 80 && dimensions.height > 80 && <WebGLRendererBoundary fallback={fallbackGraph} onError={use2DFallback}><ForceGraph3D
             ref={graphRef}
             graphData={graphData}
             width={dimensions.width}
@@ -514,7 +680,7 @@ export const NetworkGraph = memo(function NetworkGraph({
             onNodeHover={onNodeHover}
             onLinkClick={onSelectLink}
             onEngineStop={onEngineStop}
-          />}
+          /></WebGLRendererBoundary>}
 
           {loading && <div className="absolute inset-0 z-10 grid place-items-center bg-[#070b12]/88"><span className="flex items-center gap-2 text-[10px] text-slate-400"><LoaderCircle size={15} className="animate-spin text-cyan-300" />Loading national graph from FastAPI…</span></div>}
           {!loading && error && <div className="absolute inset-0 z-10 grid place-items-center bg-[#070b12]/90"><div className="max-w-sm px-6 text-center"><AlertCircle size={20} className="mx-auto mb-2 text-amber-300" /><div className="text-[11px] text-slate-200">Unable to load the network graph</div><div className="mt-1 text-[9px] text-slate-500">{error}</div><button type="button" onClick={() => setReloadKey((current) => current + 1)} className="mt-3 inline-flex items-center gap-1.5 rounded border border-cyan-300/15 px-2.5 py-1.5 text-[9px] text-cyan-200 hover:bg-cyan-300/[.06]"><RefreshCw size={11} />Retry connection</button></div></div>}
@@ -527,7 +693,7 @@ export const NetworkGraph = memo(function NetworkGraph({
             <button type="button" aria-label="Fit graph to screen" onClick={fitToScreen} className="grid h-7 w-7 place-items-center rounded text-slate-400 transition hover:bg-white/[.07] hover:text-cyan-200"><Crosshair size={13} /></button>
           </div>
           <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md border border-white/[.08] bg-[#0a0f17]/85 px-2.5 py-1.5 font-mono text-[7px] tracking-wider text-slate-400 backdrop-blur-md"><span className="text-red-300">{highRiskCount} HIGH-RISK</span><span className="text-slate-700">/</span>{selectedAccountCount} ACCOUNTS{refreshing && <LoaderCircle size={10} className="animate-spin text-cyan-300" />}</div>
-          <div className="absolute bottom-4 right-3 z-10 hidden text-right text-[7px] leading-relaxed tracking-wider text-slate-500/75 md:block">DRAG TO ORBIT · RIGHT-DRAG TO PAN · SCROLL TO ZOOM<br />{lastIngest ? `LAST INGEST ${lastIngest} IST` : "WAITING FOR NEXT TRANSACTION EVENT"}</div>
+          <div className="absolute bottom-4 right-3 z-10 hidden text-right text-[7px] leading-relaxed tracking-wider text-slate-500/75 md:block">{rendererMode === "2d" ? "SELECT NODES TO INSPECT · SELECT LINKS FOR EVIDENCE" : "DRAG TO ORBIT · RIGHT-DRAG TO PAN · SCROLL TO ZOOM"}<br />{lastIngest ? `LAST INGEST ${lastIngest} IST` : "WAITING FOR NEXT TRANSACTION EVENT"}</div>
         </div>
 
           <div className="flex min-h-0 flex-col overflow-hidden bg-[#0a1018]/90">
